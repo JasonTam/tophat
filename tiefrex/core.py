@@ -53,7 +53,8 @@ class FactModel(object):
         self.biases_d = {
             feat_name: tf.get_variable(
                 name=f'{feat_name}_biases',
-                initializer=tf.zeros_initializer(shape=[len(cats)])
+                shape=[len(cats)],
+                initializer=tf.zeros_initializer()
             )
             for feat_name, cats in self.cats_d.items()
         }
@@ -118,7 +119,7 @@ class FactModel(object):
         neg_score = tf.identity(self.forward(**neg_input_d), name='neg_score')
 
         # Note: Hard coded BPR loss for now
-        loss_bpr = tf.sub(1., tf.sigmoid(pos_score - neg_score), name='bpr')
+        loss_bpr = tf.subtract(1., tf.sigmoid(pos_score - neg_score), name='bpr')
         return tf.reduce_mean(loss_bpr, name='bpr_mean')
 
     def training(self, loss) -> tf.Operation:
