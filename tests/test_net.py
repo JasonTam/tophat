@@ -1,5 +1,5 @@
 import unittest
-from tiefrex import net
+from tiefrex import core
 
 
 class TestNet(unittest.TestCase):
