@@ -1,13 +1,26 @@
 # TiefRex
-
-## Syncing Data Fixtures
-`data/get_fixture_small.sh` will grab 10 days of interaction data and some related dimensional data
  
 ## Running Local
 *Only* local runs are supported right now.
 
-`python tiefrex/fit_job.py`
+Grab 10 days of interaction data and some related dimensional data:
 
-Tensorboard can be run for inspection
+```
+data/get_fixture_small.sh
+```
 
-`tensorboard --logdir=/tmp/tensorboard-logs`
+Build and enter Docker container. Run fit job:
+
+
+```
+make build
+make local
+python tiefrex/fit_job.py
+```
+
+Tensorboard can be run for inspection (does not need to be within
+docker container as the log dir is shared by a Docker volume).
+
+```
+tensorboard --logdir=/tmp/tensorboard-logs
+```
