@@ -1,6 +1,5 @@
 # Proj Specific
 notebooks/.ipynb_checkpoints/
-notebooks/
 data/*
 !data/*.sh
 .idea/
