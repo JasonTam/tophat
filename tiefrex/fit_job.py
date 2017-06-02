@@ -56,7 +56,8 @@ def run():
 
     # Make Placeholders according to our cats
     # input_forward_d = fwd_dict_via_cats(cats_d.keys(), batch_size)
-    input_pair_d = pair_dict_via_cols(user_feat_cols, item_feat_cols, batch_size)
+    with tf.name_scope('placeholders'):
+        input_pair_d = pair_dict_via_cols(user_feat_cols, item_feat_cols, batch_size)
 
     # Ops
     model = FactModel(cats_d, user_feat_cols, item_feat_cols,

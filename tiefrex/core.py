@@ -40,24 +40,28 @@ class FactModel(object):
         # Note: possibly need an emb for NaN code
         #     (can be index 0, and we will always add 1 to our codes)
         #     else, it should map to 0's tensor
-        self.embeddings_d = {
-            feat_name: tf.get_variable(
-                name=f'{feat_name}_embs',
-                shape=[len(cats), embedding_dim],
-                initializer=tf.random_normal_initializer(
+
+        with tf.name_scope('embeddings'):
+            self.embeddings_d = {
+                feat_name: tf.get_variable(
+                    name=f'{feat_name}_embs',
+                    shape=[len(cats), embedding_dim],
+                    initializer=tf.random_normal_initializer(
                     mean=0., stddev=1./self.embedding_dim, seed=self.seed),
-                regularizer=self.regularizer
-            )
-            for feat_name, cats in self.cats_d.items()
-        }
-        self.biases_d = {
-            feat_name: tf.get_variable(
-                name=f'{feat_name}_biases',
-                shape=[len(cats)],
+                    regularizer=self.regularizer
+                )
+                for feat_name, cats in self.cats_d.items()
+            }
+
+        with tf.name_scope('biases'):
+            self.biases_d = {
+                feat_name: tf.get_variable(
+                    name=f'{feat_name}_biases',
+                    shape=[len(cats)],
                 initializer=tf.zeros_initializer()
-            )
-            for feat_name, cats in self.cats_d.items()
-        }
+                )
+                for feat_name, cats in self.cats_d.items()
+            }
 
         self.intra_field = intra_field
         self.optimizer = optimizer
@@ -68,35 +72,38 @@ class FactModel(object):
         :param input_xn_d: dictionary of feature names to category codes
             for a single interaction
         """
-        embeddings_l_user = [
-            tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
-                                   name=f'{feat_name}_lookedup')
-            for feat_name in self.user_feat_cols
-        ]
-        embeddings_l_item = [
-            tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
-                                   name=f'{feat_name}_lookedup')
-            for feat_name in self.item_feat_cols
-        ]
+        with tf.name_scope('user_lookup'):
+            embeddings_user = tf.stack([
+                tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
+                                       name=f'{feat_name}_lookedup')
+                for feat_name in self.user_feat_cols
+            ], axis=-1)
 
-        biases_l = [
-            tf.nn.embedding_lookup(self.biases_d[feat_name], input_xn_d[feat_name])
-            for feat_name in self.user_feat_cols+self.item_feat_cols
-        ]
+        with tf.name_scope('item_lookup'):
+            embeddings_item = tf.stack([
+                tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
+                                       name=f'{feat_name}_lookedup')
+                for feat_name in self.item_feat_cols
+            ], axis=-1)
 
-        if self.intra_field:
-            feature_pairs = itertools.combinations(embeddings_l_user+embeddings_l_item, 2)
-        else:
-            feature_pairs = itertools.product(embeddings_l_user, embeddings_l_item)
+        with tf.name_scope('bias_lookup'):
+            biases = tf.stack([
+                tf.nn.embedding_lookup(self.biases_d[feat_name], input_xn_d[feat_name])
+                for feat_name in self.user_feat_cols+self.item_feat_cols
+            ], axis=-1)
 
-        contrib_dot = tf.add_n([
-            tf.reduce_sum(tf.multiply(*pair), 1, keep_dims=False)
-            for pair in feature_pairs],
-            name='contrib_dot')
+        with tf.name_scope('interaction_model'):
+            if self.intra_field:
+                embeddings = tf.concat([embeddings_user, embeddings_item], axis=2)
+                prod = tf.matmul(embeddings, embeddings, transpose_a=True)
+            else:
+                prod = tf.matmul(embeddings_user, embeddings_item, transpose_a=True)
 
-        contrib_bias = tf.add_n(biases_l, name='contrib_bias')
+            contrib_dot = tf.reduce_sum(prod, axis=[1,2], name='contrib_dot')
+            contrib_bias = tf.reduce_sum(biases, axis=[1], name='contrib_bias')
 
-        score = tf.add(contrib_dot, contrib_bias, name='score')
+            score = tf.add(contrib_dot, contrib_bias, name='score')
+
         return score
 
     def get_loss(self, **input_xn_pair_d) -> tf.Tensor:
@@ -106,21 +113,22 @@ class FactModel(object):
             for a pos/neg pair of interactions
         :return: scalar loss
         """
+        with tf.name_scope('model'):
+            # Split up input into pos & neg interaction
+            pos_input_d = {k.split(TAG_DELIM, 1)[-1]: v for k, v in input_xn_pair_d.items()
+                           if k.startswith(USER_VAR_TAG+TAG_DELIM)
+                           or k.startswith(POS_VAR_TAG+TAG_DELIM)}
+            neg_input_d = {k.split(TAG_DELIM, 1)[-1]: v for k, v in input_xn_pair_d.items()
+                           if k.startswith(USER_VAR_TAG+TAG_DELIM)
+                           or k.startswith(NEG_VAR_TAG+TAG_DELIM)}
 
-        # Split up input into pos & neg interaction
-        pos_input_d = {k.split(TAG_DELIM, 1)[-1]: v for k, v in input_xn_pair_d.items()
-                       if k.startswith(USER_VAR_TAG+TAG_DELIM)
-                       or k.startswith(POS_VAR_TAG+TAG_DELIM)}
-        neg_input_d = {k.split(TAG_DELIM, 1)[-1]: v for k, v in input_xn_pair_d.items()
-                       if k.startswith(USER_VAR_TAG+TAG_DELIM)
-                       or k.startswith(NEG_VAR_TAG+TAG_DELIM)}
+            pos_score = tf.identity(self.forward(**pos_input_d), name='pos_score')
+            neg_score = tf.identity(self.forward(**neg_input_d), name='neg_score')
 
-        pos_score = tf.identity(self.forward(**pos_input_d), name='pos_score')
-        neg_score = tf.identity(self.forward(**neg_input_d), name='neg_score')
-
-        # Note: Hard coded BPR loss for now
-        loss_bpr = tf.subtract(1., tf.sigmoid(pos_score - neg_score), name='bpr')
-        return tf.reduce_mean(loss_bpr, name='bpr_mean')
+            with tf.name_scope('loss'):
+                # Note: Hard coded BPR loss for now
+                loss_bpr = tf.subtract(1., tf.sigmoid(pos_score - neg_score), name='bpr')
+                return tf.reduce_mean(loss_bpr, name='bpr_mean')
 
     def training(self, loss) -> tf.Operation:
         """
