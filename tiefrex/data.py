@@ -12,20 +12,23 @@ def load_simple(
     """Stand-in loader mostly for local testing"""
 
     interactions_df = custom_io.try_load(path_interactions)
-    interactions_df = custom_io.filter_col_isin(interactions_df, activity_col, activity_filter).compute()
+    interactions_df = custom_io.filter_col_isin(
+        interactions_df, activity_col, activity_filter).compute()
 
     if path_user_features:
         user_feats_df = custom_io \
             .try_load(path_item_features, limit_dates=False) \
             .set_index(item_col)
     else:
-        user_feats_df = pd.DataFrame(index=interactions_df[user_col].drop_duplicates())
+        user_feats_df = pd.DataFrame(
+            index=interactions_df[user_col].drop_duplicates())
     if path_item_features:
         item_feats_df = custom_io \
             .try_load(path_item_features, limit_dates=False) \
             .set_index(item_col)
     else:
-        item_feats_df = pd.DataFrame(index=interactions_df[item_col].drop_duplicates())
+        item_feats_df = pd.DataFrame(
+            index=interactions_df[item_col].drop_duplicates())
 
     # Simplifying assumption:
     # All interactions have an entry in the feature dfs

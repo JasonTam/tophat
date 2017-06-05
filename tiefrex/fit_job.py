@@ -1,10 +1,11 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.tensorboard.plugins import projector
-from time import time
+from time import time, strftime, gmtime
+
 import os
 
-from tiefrex.core import FactModel, fwd_dict_via_cats, pair_dict_via_cols
+from tiefrex.core import EmbeddingMap, FactModel, fwd_dict_via_cats, pair_dict_via_cols
 from tiefrex.config.main_cfg import main_cfg
 from tiefrex.metadata_proc import write_metadata_emb
 from tiefrex import naive_sampler
@@ -28,7 +29,8 @@ EMB_DIM = 16
 batch_size = 1024
 n_steps = 2000
 log_every = 100
-LOG_DIR = '/tmp/tensorboard-logs'
+LOG_DIR = f'/tmp/tensorboard-logs/{strftime("%Y-%m-%d-T%H%M%S", gmtime())}'
+tf.gfile.MkDir(LOG_DIR)
 
 
 def run():
@@ -48,22 +50,18 @@ def run():
            for feat_name in item_feat_cols},
     }
 
-    # MetaData for embedding viz
-    feat_to_metapath = write_metadata_emb(
-        cats_d, main_cfg['local']['paths_input']['names'], LOG_DIR)
-
     # INIT MODEL
 
     # Make Placeholders according to our cats
-    # input_forward_d = fwd_dict_via_cats(cats_d.keys(), batch_size)
     with tf.name_scope('placeholders'):
-        input_pair_d = pair_dict_via_cols(user_feat_cols, item_feat_cols, batch_size)
+        input_pair_d = pair_dict_via_cols(
+            user_feat_cols, item_feat_cols, batch_size)
 
-    # Ops
-    model = FactModel(cats_d, user_feat_cols, item_feat_cols,
-                      embedding_dim=EMB_DIM)
-    # fwd = model.forward(**input_forward_d)
-    loss = model.get_loss(**input_pair_d)
+    # Ops and feature map
+    embedding_map = EmbeddingMap(cats_d, user_feat_cols,
+                                 item_feat_cols, embedding_dim=EMB_DIM)
+    model = FactModel(embedding_map=embedding_map)
+    loss = model.get_loss(input_pair_d)
     train_op = model.training(loss)
 
     # Convert everything to categorical codes
@@ -96,14 +94,8 @@ def run():
 
         summary = tf.summary.merge_all()
         saver = tf.train.Saver()
-        summary_writer = tf.summary.FileWriter(LOG_DIR, graph=tf.get_default_graph())
-        config = projector.ProjectorConfig()
-        emb_proj_obj_d = {}
-        for feat_name, emb in model.embeddings_d.items():
-            if feat_name in feat_to_metapath:
-                emb_proj_obj_d[feat_name] = config.embeddings.add()
-                emb_proj_obj_d[feat_name].tensor_name = emb.name
-                emb_proj_obj_d[feat_name].metadata_path = feat_to_metapath[feat_name]
+        summary_writer = tf.summary.FileWriter(
+            LOG_DIR, graph=tf.get_default_graph())
 
         tic = time()
         for step in range(n_steps):
@@ -117,13 +109,27 @@ def run():
 
                 toc = time() - tic
                 tic = time()
-                logger.info('(%.3f sec) \t Step %d: \t (train)loss = %.8f ' % (toc, step, loss_val))
+                logger.info('(%.3f sec) \t Step %d: \t (train)loss = %.8f ' % (
+                    toc, step, loss_val))
+
+        # serialize meta data for embedding viz
+        feat_to_metapath = write_metadata_emb(
+            cats_d, main_cfg['local']['paths_input']['names'], LOG_DIR)
+
+        config = projector.ProjectorConfig()
+        emb_proj_obj_d = {}
+        for feat_name, emb in embedding_map.embeddings_d.items():
+            if feat_name in feat_to_metapath:
+                emb_proj_obj_d[feat_name] = config.embeddings.add()
+                emb_proj_obj_d[feat_name].tensor_name = emb.name
+                emb_proj_obj_d[feat_name].metadata_path = feat_to_metapath[feat_name]
 
         # After the last step, lets save some embedding to viz later
         projector.visualize_embeddings(summary_writer, config)
         saver.save(sess, os.path.join(LOG_DIR, 'model.ckpt'), step)
 
     return True
+
 
 if __name__ == '__main__':
     run()

@@ -10,7 +10,8 @@ def write_metadata_emb(cats_d: Dict[str, List[Any]],
     for feat_name, cats in cats_d.items():
         if feat_name in path_names_d:
             path_out = os.path.join(log_dir, f'metadata-{feat_name}.tsv')
-            names_df = pd.read_csv(path_names_d[feat_name], index_col=feat_name)
+            names_df = pd.read_csv(
+                path_names_d[feat_name], index_col=feat_name)
             lbls_embs = names_df.loc[cats].reset_index(drop=True)
             lbls_embs.index.name = 'index'
             lbls_embs.to_csv(path_out, sep='\t')
