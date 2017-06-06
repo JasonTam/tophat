@@ -34,7 +34,7 @@ class EmbeddingMap(object):
         #     (can be index 0, and we will always add 1 to our codes)
         #     else, it should map to 0's tensor
 
-        with tf.name_scope('embeddings'):
+        with tf.variable_scope('embeddings'):
             self.embeddings_d = {
                 feat_name: tf.get_variable(
                     name=f'{feat_name}_embs',
@@ -46,7 +46,7 @@ class EmbeddingMap(object):
                 for feat_name, cats in self.cats_d.items()
             }
 
-        with tf.name_scope('biases'):
+        with tf.variable_scope('biases'):
             self.biases_d = {
                 feat_name: tf.get_variable(
                     name=f'{feat_name}_biases',
