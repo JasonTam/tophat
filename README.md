@@ -13,9 +13,15 @@ Build and enter Docker container. Run fit job:
 
 
 ```
-make build
-make local
+make cpu
 python tiefrex/fit_job.py
+```
+
+or
+
+```
+make gpu
+python3.6 tiefrex/fit_job.py
 ```
 
 Tensorboard can be run for inspection (does not need to be within

@@ -88,7 +88,7 @@ def run():
     n_interactions = len(interactions_df)
     logger.info(f'Approx n_epochs: {(n_steps * batch_size) / n_interactions}')
 
-    with tf.Session() as sess:
+    with tf.Session(config=tf.ConfigProto(log_device_placement=True, allow_soft_placement=True)) as sess:
         init = tf.global_variables_initializer()
         sess.run(init)
 
