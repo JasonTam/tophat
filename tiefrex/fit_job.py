@@ -97,13 +97,13 @@ def run():
     item_ids = cats_d[item_col]
 
     # Sample Generator
-    shuffle_inds = np.arange(len(interactions_df))
-    feed_dict_gen = naive_sampler.feed_dicter(
-        shuffle_inds, batch_size,
+    feed_dict_gen = naive_sampler.feed_dicter_via_sp(
         interactions_df,
         user_col, item_col,
-        user_feats_codes_df, item_feats_codes_df,
-        item_ids, input_pair_d)
+        user_feats_codes_df.loc[cats_d[user_col]],  # ordered according to known categories
+        item_feats_codes_df.loc[cats_d[item_col]],  # ordered according to known categories
+        input_pair_d,
+        batch_size)
 
     # Eval ops
     # Define our metrics: MAP@10 and AUC
