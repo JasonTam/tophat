@@ -75,4 +75,3 @@ def feed_dicter(
             feed_pair_dict = feed_via_pair(
                 input_pair_d, user_feed_d, pos_item_feed_d, neg_item_feed_d)
             yield feed_pair_dict
-

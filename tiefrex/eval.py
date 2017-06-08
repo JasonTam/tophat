@@ -18,7 +18,7 @@ def items_pred_dicter(user_id, item_ids,
     item_feed_d = item_feats_codes_df.loc[item_ids].to_dict(orient='list')
 
     feed_fwd_dict = {
-        **{input_fwd_d[f'{feat_name}']: data_in*n_items
+        **{input_fwd_d[f'{feat_name}']: data_in * n_items
            for feat_name, data_in in user_feed_d.items()},
         **{input_fwd_d[f'{feat_name}']: data_in
            for feat_name, data_in in item_feed_d.items()},
@@ -115,7 +115,8 @@ def eval_things(sess,
         except StopIteration:
             break
 
-        y_true = interactions_df.loc[interactions_df[user_col] == user_id][item_col].cat.codes.values
+        y_true = interactions_df.loc[interactions_df[user_col]
+                                     == user_id][item_col].cat.codes.values
         y_true_bool = np.zeros(len(item_ids), dtype=bool)
         y_true_bool[y_true] = True
 

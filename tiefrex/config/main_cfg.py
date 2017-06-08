@@ -5,20 +5,20 @@ from tiefrex.constants import *
 main_cfg = {
     'local': {
         'paths_input': {
-            'target_interactions': os.path.join(local_data_dir, 'profile/user-product_activity_counts'),
+            'target_interactions': os.path.join(local_data_dir, 'train/profile/user-product_activity_counts'),
             'features': {
                 'user': {
                 },
                 'item': {
                     'dim_products': {
                         'dtype': 'categorical',
-                        'path': os.path.join(local_data_dir, 'dim/dim_products.msg'),
+                        'path': os.path.join(local_data_dir, 'train/dim/dim_products.msg'),
                     },
                 },
             },
             'names': {
-                'ops_brand_id': os.path.join(local_data_dir, 'dim/brand_names.csv'),
-                'ops_product_category_id': os.path.join(local_data_dir, 'dim/pcat_names.csv'),
+                'ops_brand_id': os.path.join(local_data_dir, 'train/dim/brand_names.csv'),
+                'ops_product_category_id': os.path.join(local_data_dir, 'train/dim/pcat_names.csv'),
             }
         },
         'filter_activity_set': {b'purch'},

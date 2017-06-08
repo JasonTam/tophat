@@ -1,6 +1,6 @@
 import os
 
-local_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../data')
+local_data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../data/gilt')
 
 BUCKET_IMPORTS = 's3://cerebro-recengine-imports'
 BUCKET_FIXTURES = 's3://cerebro-recengine-fixtures'

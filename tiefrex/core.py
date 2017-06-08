@@ -92,7 +92,7 @@ class FactModel(object):
                  # loss_type: str='bpr',
                  l2: float=1e-5,
                  intra_field: bool=False,
-                 optimizer: tf.train.Optimizer=tf.train.GradientDescentOptimizer(0.05),
+                 optimizer: tf.train.Optimizer=tf.train.AdamOptimizer(),
                  seed=SEED,
                  ):
         """
