@@ -17,7 +17,7 @@ def load_simple(
 
     if path_user_features:
         user_feats_df = custom_io \
-            .try_load(path_item_features, limit_dates=False) \
+            .try_load(path_user_features, limit_dates=False) \
             .set_index(item_col)
     else:
         user_feats_df = pd.DataFrame(
