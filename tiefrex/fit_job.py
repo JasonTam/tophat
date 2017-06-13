@@ -39,7 +39,7 @@ np.random.seed(SEED)
 
 EMB_DIM = 16
 batch_size = 1024
-n_steps = 2000
+n_steps = 8000
 log_every = 100
 eval_every = 500
 LOG_DIR = f'/tmp/tensorboard-logs/{strftime("%Y-%m-%d-T%H%M%S", gmtime())}'
@@ -97,13 +97,16 @@ def run():
     item_ids = cats_d[item_col]
 
     # Sample Generator
-    feed_dict_gen = naive_sampler.feed_dicter_via_sp(
+    sampler = naive_sampler.PairSampler(
         interactions_df,
         user_col, item_col,
         user_feats_codes_df.loc[cats_d[user_col]],  # ordered according to known categories
         item_feats_codes_df.loc[cats_d[item_col]],  # ordered according to known categories
         input_pair_d,
-        batch_size)
+        batch_size,
+        method='uniform',
+    )
+    feed_dict_gen = iter(sampler)
 
     # Eval ops
     # Define our metrics: MAP@10 and AUC

@@ -111,6 +111,11 @@ class FactModel(object):
         self.intra_field = intra_field
         self.optimizer = optimizer
 
+    def get_fwd_dict(self, batch_size):
+        return fwd_dict_via_cats(
+            self.embedding_map.cats_d.keys(),
+            batch_size)
+
     def forward(self, input_xn_d) -> tf.Tensor:
         """
         Forward inference step to score a user-item interaction
@@ -136,6 +141,12 @@ class FactModel(object):
             score = tf.add(contrib_dot, contrib_bias, name='score')
 
         return score
+
+    def get_pair_dict(self, batch_size):
+        return pair_dict_via_cols(
+            self.embedding_map.user_feat_cols,
+            self.embedding_map.item_feat_cols,
+            batch_size)
 
     def get_loss(self, input_xn_pair_d) -> tf.Tensor:
         """
