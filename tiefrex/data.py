@@ -114,7 +114,9 @@ def load_simple(
     if path_user_features:
         user_feats_df = custom_io \
             .try_load(path_user_features, limit_dates=False) \
-            .set_index(item_col)
+            .set_index(user_col)
+        if hasattr(user_feats_df, 'compute'):  # cant isin dask
+            user_feats_df = user_feats_df.compute()
     else:
         user_feats_df = pd.DataFrame(
             index=interactions_df[user_col].drop_duplicates())
@@ -122,6 +124,8 @@ def load_simple(
         item_feats_df = custom_io \
             .try_load(path_item_features, limit_dates=False) \
             .set_index(item_col)
+        if hasattr(item_feats_df, 'compute'):  # cant isin dask
+            item_feats_df = item_feats_df.compute()
     else:
         item_feats_df = pd.DataFrame(
             index=interactions_df[item_col].drop_duplicates())
