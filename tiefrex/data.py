@@ -1,7 +1,103 @@
 import pandas as pd
-
+import numpy as np
+import tensorflow as tf
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
+from tiefrex.core import fwd_dict_via_cats, pair_dict_via_cols
+from tiefrex import eval
+
+
+class TrainDataLoader(object):
+    def __init__(self, config):
+        self.batch_size = config.get('batch_size')
+        interactions_train = config.get('train_interactions')
+        path_interactions = interactions_train.path
+        activity_col = interactions_train.activity_column
+
+        user_col = interactions_train.user_id_column
+        self.user_col = user_col
+
+        item_col = interactions_train.item_id_column
+        self.item_col = item_col
+
+        activity_filter = interactions_train.filter_activity_set
+        item_features = config.get('item_features')
+        path_item_features = item_features[0].path
+
+        self.interactions_df, self.user_feats_df, self.item_feats_df = load_simple(
+            path_interactions, None, path_item_features,
+            user_col, item_col,
+            activity_col, activity_filter
+        )
+        self.user_feat_cols = self.user_feats_df.columns.tolist()
+        self.item_feat_cols = self.item_feats_df.columns.tolist()
+
+        self.cats_d = {
+            **{feat_name: self.user_feats_df[feat_name].cat.categories.tolist()
+               for feat_name in self.user_feat_cols},
+            **{feat_name: self.item_feats_df[feat_name].cat.categories.tolist()
+               for feat_name in self.item_feat_cols},
+        }
+
+        self.user_feats_codes_df = self.user_feats_df.copy()
+        for col in self.user_feats_codes_df.columns:
+            self.user_feats_codes_df[col] = self.user_feats_codes_df[col].cat.codes
+            self.item_feats_codes_df = self.item_feats_df.copy()
+        for col in self.item_feats_codes_df.columns:
+            self.item_feats_codes_df[col] = self.item_feats_codes_df[col].cat.codes
+
+    def export_data_encoding(self):
+        return self.cats_d, self.user_feats_codes_df, self.item_feats_codes_df
+
+
+class Validator(object):
+    def __init__(self, cats_d, user_feats_codes_df, item_feats_codes_df, config):
+        self.cats_d = cats_d
+        self.user_feats_codes_df = user_feats_codes_df
+        self.item_feats_codes_df = item_feats_codes_df
+
+        interactions_val = config.get('eval_interactions')
+        path_interactions_val = interactions_val.path
+        activity_col_val = interactions_val.activity_column
+
+        self.user_col_val = interactions_val.user_id_column
+        self.item_col_val = interactions_val.item_id_column
+
+        activity_filter_val = interactions_val.filter_activity_set
+
+        self.interactions_val_df = load_simple_warm_cats(
+            path_interactions_val,
+            self.user_col_val, self.item_col_val,
+            self.cats_d[self.user_col_val], self.cats_d[self.item_col_val],
+            activity_col_val, activity_filter_val,
+        )
+
+    def ops(self, model):
+        # Eval ops
+        # Define our metrics: MAP@10 and AUC
+        self.model = model
+        self.item_ids = self.cats_d[self.item_col_val]
+        self.user_ids_val = self.interactions_val_df[self.user_col_val].unique()
+        np.random.shuffle(self.user_ids_val)
+
+        with tf.name_scope('placeholders'):
+            self.input_fwd_d = fwd_dict_via_cats(
+                self.cats_d.keys(), len(self.item_ids))
+
+        self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = eval.make_metrics_ops(
+            self.model.forward, self.input_fwd_d)
+
+    def run_val(self, sess, summary_writer, step):
+        eval.eval_things(sess,
+                         self.interactions_val_df,
+                         self.user_col_val, self.item_col_val,
+                         self.user_ids_val, self.item_ids,
+                         self.user_feats_codes_df, self.item_feats_codes_df,
+                         self.input_fwd_d,
+                         self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d,
+                         n_users_eval=20,
+                         summary_writer=summary_writer, step=step,
+                         )
 
 
 def load_simple(

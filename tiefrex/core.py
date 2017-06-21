@@ -2,29 +2,46 @@ import tensorflow as tf
 import itertools
 from tiefrex.constants import *
 from typing import List, Dict, Iterable, Sized
+from tiefrex.metadata_proc import write_metadata_emb
+from tensorflow.contrib.tensorboard.plugins import projector
+
+
+class EmbeddingProjector(object):
+    def __init__(self, embedding_map, summary_writer, config):
+        self.summary_writer = summary_writer
+        feat_to_metapath = write_metadata_emb(
+            embedding_map.data_loader.cats_d, config.get('names'), config.get('log_dir'))
+
+        self.projection_config = projector.ProjectorConfig()
+        emb_proj_obj_d = {}
+        for feat_name, emb in embedding_map.embeddings_d.items():
+            if feat_name in feat_to_metapath:
+                emb_proj_obj_d[feat_name] = self.projection_config.embeddings.add()
+                emb_proj_obj_d[feat_name].tensor_name = emb.name
+                emb_proj_obj_d[feat_name].metadata_path = feat_to_metapath[feat_name]
+
+    def viz(self):
+        # After the last step, lets save some embedding to viz later
+        projector.visualize_embeddings(self.summary_writer, self.projection_config)
 
 
 class EmbeddingMap(object):
     def __init__(self,
-                 cats_d: Dict[str, Sized],
-                 user_feat_cols: List[str],
-                 item_feat_cols: List[str],
+                 data_loader,
                  embedding_dim: int=16,
                  l2: float=1e-5,
-                 seed=SEED,
+                 seed=SEED
                  ):
         """
-        :param cats_d: dictionary of feature name -> possible categorical values (catalog/vocabulary)
-            (only the size of the catalog is needed)
-        :param user_feat_cols: names of user features
-        :param item_feat_cols: names of item features
+        :param data_loader: Expecting tiefrex.data.TrainDataLoader
         :param embedding_dim: number of dimensions in each embedding matrix (number of latent factors)
         :param l2: l2 regularization scale (0 to disable)
         """
         self.seed = seed
-        self.cats_d = cats_d
-        self.user_feat_cols = user_feat_cols
-        self.item_feat_cols = item_feat_cols
+        self.data_loader = data_loader
+        self.cats_d = data_loader.cats_d
+        self.user_feat_cols = data_loader.user_feat_cols
+        self.item_feat_cols = data_loader.item_feat_cols
 
         self.l2 = l2
         self.regularizer = tf.contrib.layers.l2_regularizer(scale=self.l2)
@@ -148,13 +165,19 @@ class FactModel(object):
             self.embedding_map.item_feat_cols,
             batch_size)
 
-    def get_loss(self, input_xn_pair_d) -> tf.Tensor:
+    def get_loss(self) -> tf.Tensor:
         """
         Calculates the pair-loss between a postitive and negative interaction
         :param input_xn_pair_d: dictionary of feature names to category codes
             for a pos/neg pair of interactions
         :return: scalar loss
         """
+        # Make Placeholders according to our cats
+        with tf.name_scope('placeholders'):
+            input_xn_pair_d = pair_dict_via_cols(
+                self.embedding_map.data_loader.user_feat_cols, self.embedding_map.data_loader.item_feat_cols, batch_size=self.embedding_map.data_loader.batch_size)
+            self.input_pair = input_xn_pair_d
+
         with tf.name_scope('model'):
             # Split up input into pos & neg interaction
             pos_input_d = {k.split(TAG_DELIM, 1)[-1]: v for k, v in input_xn_pair_d.items()

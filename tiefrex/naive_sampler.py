@@ -35,9 +35,7 @@ def feed_via_pair(input_pair_d: Dict[str, tf.Tensor],
 
 class PairSampler(object):
     def __init__(self,
-                 interactions_df,
-                 user_col: str, item_col: str,
-                 user_feats_codes_df, item_feats_codes_df,
+                 train_data_loader,
                  input_pair_d: Dict[str, tf.Tensor],
                  batch_size: int=1024,
                  shuffle: bool=True,
@@ -46,12 +44,7 @@ class PairSampler(object):
                  net=None,
                  ):
         """
-        :param interactions_df: dataframe of interactions
-            user and item columns should be of categorical type
-        :param user_col: name of user column in `interactions_df`
-        :param item_col: name of item column in `interactions_df`
-        :param user_feats_codes_df: dataframe of user feature codes
-        :param item_feats_codes_df: dataframe of item feature codes
+        :param train_data_loader: tiefrex.core.TrainDataLoader
         :param input_pair_d: dictionary of placeholders keyed by name
         :param batch_size: batch size
         :param shuffle: if `True`, batches will be sampled from a shuffled index
@@ -59,6 +52,13 @@ class PairSampler(object):
         :param method: negative sampling method
         :param net: network object that implements a forward method for adaptive sampling
         """
+        interactions_df = train_data_loader.interactions_df
+        user_col = train_data_loader.user_col
+        item_col = train_data_loader.item_col
+        user_feats_codes_df = train_data_loader.user_feats_codes_df.loc[
+            train_data_loader.cats_d[train_data_loader.user_col]]
+        item_feats_codes_df = train_data_loader.item_feats_codes_df.loc[
+            train_data_loader.cats_d[train_data_loader.item_col]]
         self.method = method
         self.get_negs = {
             'uniform': self.sample_uniform,
@@ -128,13 +128,15 @@ class PairSampler(object):
          TODO: need to handle this return signature somehow
         """
         neg_item_inds_batch = []
-        pos_fwd_dict = self.fwd_dicter_via_inds(user_inds_batch, pos_item_inds_batch, self.pos_fwd_d)
+        pos_fwd_dict = self.fwd_dicter_via_inds(
+            user_inds_batch, pos_item_inds_batch, self.pos_fwd_d)
         pos_scores = self.sess.run(self.pos_fwd_op, feed_dict=pos_fwd_dict)
         for user_ind, pos_score in zip(user_inds_batch, pos_scores):
             user_pos_item_inds = get_row_nz(self.xn_csr, user_ind)
             # Sample all candidates right away
             neg_item_inds = np.random.randint(self.n_items, size=self.max_sampled)
-            verification = np.array([ind not in user_pos_item_inds for ind in neg_item_inds], dtype=bool)
+            verification = np.array(
+                [ind not in user_pos_item_inds for ind in neg_item_inds], dtype=bool)
             neg_cand_fwd_dict = self.fwd_dicter_via_inds(user_ind, neg_item_inds, self.neg_fwd_d)
             neg_cand_scores = self.sess.run(self.neg_fwd_op, feed_dict=neg_cand_fwd_dict)
 
@@ -170,9 +172,12 @@ class PairSampler(object):
                     user_inds_batch=user_inds_batch,
                     pos_item_inds_batch=pos_item_inds_batch,)
 
-                user_feed_d = dict(zip(self.user_cols, self.user_feats_codes_arr[user_inds_batch, :].T))
-                pos_item_feed_d = dict(zip(self.item_cols, self.item_feats_codes_arr[pos_item_inds_batch, :].T))
-                neg_item_feed_d = dict(zip(self.item_cols, self.item_feats_codes_arr[neg_item_inds_batch, :].T))
+                user_feed_d = dict(
+                    zip(self.user_cols, self.user_feats_codes_arr[user_inds_batch, :].T))
+                pos_item_feed_d = dict(
+                    zip(self.item_cols, self.item_feats_codes_arr[pos_item_inds_batch, :].T))
+                neg_item_feed_d = dict(
+                    zip(self.item_cols, self.item_feats_codes_arr[neg_item_inds_batch, :].T))
 
                 feed_pair_dict = feed_via_pair(
                     self.input_pair_d, user_feed_d, pos_item_feed_d, neg_item_feed_d)
