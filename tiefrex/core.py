@@ -167,7 +167,7 @@ class FactModel(object):
 
     def get_loss(self) -> tf.Tensor:
         """
-        Calculates the pair-loss between a postitive and negative interaction
+        Calculates the pair-loss between a positive and negative interaction
         :param input_xn_pair_d: dictionary of feature names to category codes
             for a pos/neg pair of interactions
         :return: scalar loss

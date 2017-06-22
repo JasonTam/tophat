@@ -9,10 +9,10 @@ from tiefrex.constants import SEED, __file__
 from typing import NamedTuple
 from time import strftime, gmtime
 
+
 class FeatureType(Enum):
     CATEGORICAL = 1
     CONTINUOUS = 2
-
 
 FeatureSource = NamedTuple('FeatureSource', [('path', str), ('feature_type',
                                                              FeatureType)])
@@ -53,7 +53,11 @@ eval_interactions = InteractionsSource(
     filter_activity_set={b'purch'}
     )
 
-user_features = None
+# user_features = [
+#     FeatureSource(
+#         os.path.join(local_data_dir, 'train/features/user_summary/'),
+#         FeatureType.CATEGORICAL),
+# ]
 item_features = [
     FeatureSource(
         os.path.join(local_data_dir, 'train/dim/dim_products.msg'),
@@ -67,9 +71,9 @@ item_specific_feature = True
 seed = SEED
 
 names = {
-                'ops_brand_id': os.path.join(local_data_dir, 'train/dim/brand_names.csv'),
-                'ops_product_category_id': os.path.join(local_data_dir, 'train/dim/pcat_names.csv'),
-            }
+    'ops_brand_id': os.path.join(local_data_dir, 'train/dim/brand_names.csv'),
+    'ops_product_category_id': os.path.join(local_data_dir, 'train/dim/pcat_names.csv'),
+}
 
 batch_size = 1024
 log_dir = f'/tmp/tensorboard-logs/{strftime("%Y-%m-%d-T%H%M%S", gmtime())}'

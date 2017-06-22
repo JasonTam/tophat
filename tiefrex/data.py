@@ -4,7 +4,7 @@ import tensorflow as tf
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
 from tiefrex.core import fwd_dict_via_cats, pair_dict_via_cols
-from tiefrex import eval
+from tiefrex import evaluation
 
 
 class TrainDataLoader(object):
@@ -21,11 +21,14 @@ class TrainDataLoader(object):
         self.item_col = item_col
 
         activity_filter = interactions_train.filter_activity_set
+        # TODO: Join on {user|item}_col rather than just taking the head
+        user_features = config.get('user_features')
+        path_user_features = user_features[0].path if user_features else None
         item_features = config.get('item_features')
-        path_item_features = item_features[0].path
+        path_item_features = item_features[0].path if item_features else None
 
         self.interactions_df, self.user_feats_df, self.item_feats_df = load_simple(
-            path_interactions, None, path_item_features,
+            path_interactions, path_user_features, path_item_features,
             user_col, item_col,
             activity_col, activity_filter
         )
@@ -39,10 +42,11 @@ class TrainDataLoader(object):
                for feat_name in self.item_feat_cols},
         }
 
+        # Convert all categorical cols to corresponding codes
         self.user_feats_codes_df = self.user_feats_df.copy()
         for col in self.user_feats_codes_df.columns:
             self.user_feats_codes_df[col] = self.user_feats_codes_df[col].cat.codes
-            self.item_feats_codes_df = self.item_feats_df.copy()
+        self.item_feats_codes_df = self.item_feats_df.copy()
         for col in self.item_feats_codes_df.columns:
             self.item_feats_codes_df[col] = self.item_feats_codes_df[col].cat.codes
 
@@ -84,20 +88,21 @@ class Validator(object):
             self.input_fwd_d = fwd_dict_via_cats(
                 self.cats_d.keys(), len(self.item_ids))
 
-        self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = eval.make_metrics_ops(
+        self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = evaluation.make_metrics_ops(
             self.model.forward, self.input_fwd_d)
 
     def run_val(self, sess, summary_writer, step):
-        eval.eval_things(sess,
-                         self.interactions_val_df,
-                         self.user_col_val, self.item_col_val,
-                         self.user_ids_val, self.item_ids,
-                         self.user_feats_codes_df, self.item_feats_codes_df,
-                         self.input_fwd_d,
-                         self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d,
-                         n_users_eval=20,
-                         summary_writer=summary_writer, step=step,
-                         )
+        evaluation.eval_things(
+            sess,
+            self.interactions_val_df,
+            self.user_col_val, self.item_col_val,
+            self.user_ids_val, self.item_ids,
+            self.user_feats_codes_df, self.item_feats_codes_df,
+            self.input_fwd_d,
+            self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d,
+            n_users_eval=20,
+            summary_writer=summary_writer, step=step,
+            )
 
 
 def load_simple(
@@ -143,6 +148,7 @@ def load_simple(
     item_feats_df = item_feats_df.loc[interactions_df[item_col].unique()]
 
     # Use in the index as a feature (user and item specific eye feature)
+    # TODO: read {user|item}_speicific_feature: bool for conditional application of below
     user_feats_df[user_feats_df.index.name] = user_feats_df.index
     item_feats_df[item_feats_df.index.name] = item_feats_df.index
 
