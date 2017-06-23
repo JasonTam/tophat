@@ -1,9 +1,79 @@
 import tensorflow as tf
-import itertools
+import itertools as it
 from tiefrex.constants import *
-from typing import List, Dict, Iterable, Sized
+from typing import List, Dict, Iterable, Sized, Set
 from tiefrex.metadata_proc import write_metadata_emb
 from tensorflow.contrib.tensorboard.plugins import projector
+
+
+def preset_interactions(fields_d: Dict[str, Iterable[str]],
+                        interaction_type: str='inter',
+                        max_order: int=2
+                        ) -> Iterable[frozenset]:
+    """
+    Convenience feature interaction planner for common interaction types
+    :param fields_d: dictionary of group_name to iterable of feat_names that belong to that group
+        ex) `fields_d = {'user': {'gender', 'age'}, 'item': {'brand', 'pcat', 'price'}}`
+    :param interaction_type: preset type
+    :param max_order: max order of interactions  
+    :return: Iterable of interaction sets
+    """
+    if interaction_type == 'intra':  # includes intra field
+        feature_pairs = it.chain(
+            *(it.combinations(
+                it.chain(*fields_d.values()), order)
+                for order in range(2, max_order + 1)))
+    elif interaction_type == 'inter':  # only inter field
+        feature_pairs = it.product(*fields_d.values())
+    else:
+        raise ValueError
+
+    return map(frozenset, feature_pairs)
+
+
+def kernel_via_xn_sets(interaction_sets: Iterable[frozenset],
+                       emb_d: Dict[str, tf.Tensor]) -> tf.Tensor:
+    """
+    Computes arbitrary order interaction terms
+    Reuses lower order terms
+
+    Differs from typical HOFM as we will reuse lower order embeddings
+        (not actually sure if this is OK in terms of expressiveness)
+        In theory, we're supposed to use a new param matrix for each order
+            Much like how we use a bias param for order=1
+    :param interaction_sets: interactions to create nodes for
+    :param emb_d: dictionary of embedding tensors
+        NOTE: would include an additional `order` key to match HOFM literature
+    :return: 
+
+    References:
+        Blondel, Mathieu, et al. "Higher-Order Factorization Machines." 
+            Advances in Neural Information Processing Systems. 2016.
+    """
+    # TODO: for now we assume that all dependencies of previous order are met
+
+    interaction_sets = list(interaction_sets)
+    # Populate xn nodes with single terms (order 1)
+    xn_nodes: Dict[frozenset, tf.Tensor] = {
+        frozenset({k}): v for k, v in emb_d.items()}
+    unq_orders = set(map(len, interaction_sets))
+    for order in range(min(unq_orders), max(unq_orders) + 1):
+        with tf.name_scope(f'xn_order_{order}'):
+            for xn in interaction_sets:
+                if len(xn) == order:
+                    xn_l = list(xn)
+                    xn_nodes[xn] = tf.multiply(
+                        xn_nodes[frozenset(xn_l[:-1])],  # cached portion (if ho)
+                        xn_nodes[frozenset({xn_l[-1]})],  # last as new term
+                        name='X'.join(xn)
+                    )
+
+    # Reduce nodes of order > 1
+    contrib_dot = tf.add_n([
+        tf.reduce_sum(node, 1, keep_dims=False)
+        for s, node in xn_nodes.items() if len(s) > 1
+    ], name='contrib_dot')
+    return contrib_dot
 
 
 class EmbeddingProjector(object):
@@ -73,31 +143,40 @@ class EmbeddingMap(object):
                 for feat_name, cats in self.cats_d.items()
             }
 
-    def look_up(self, input_xn_d):
+    def look_up(self, input_xn_d, stacked=False):
         """
         :param input_xn_d: dictionary of feature names to category codes
             for a single interaction
+        :param stacked: if `True`, stack the embeddings of each group into a single tensor
         """
         with tf.name_scope('user_lookup'):
-            self.embeddings_user = tf.stack([
-                tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
-                                       name=f'{feat_name}_lookedup')
-                for feat_name in self.user_feat_cols
-            ], axis=-1)
+            self.embeddings_user = {
+                feat_name:
+                    tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
+                                           name=f'{feat_name}_emb')
+                for feat_name in self.user_feat_cols}
+            if stacked:
+                self.embeddings_user = tf.stack(list(self.embeddings_user.values()), axis=-1)
 
         with tf.name_scope('item_lookup'):
-            self.embeddings_item = tf.stack([
-                tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
-                                       name=f'{feat_name}_lookedup')
-                for feat_name in self.item_feat_cols
-            ], axis=-1)
+            self.embeddings_item = {
+                feat_name:
+                    tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
+                                           name=f'{feat_name}_emb')
+                for feat_name in self.item_feat_cols}
+
+            if stacked:
+                self.embeddings_item = tf.stack(list(self.embeddings_item.values()), axis=-1)
 
         with tf.name_scope('bias_lookup'):
-            self.biases = tf.stack([
-                tf.nn.embedding_lookup(
-                    self.biases_d[feat_name], input_xn_d[feat_name])
-                for feat_name in self.user_feat_cols + self.item_feat_cols
-            ], axis=-1)
+            self.biases = {
+                feat_name:
+                    tf.nn.embedding_lookup(self.biases_d[feat_name], input_xn_d[feat_name],
+                                           name=f'{feat_name}_bias')
+                for feat_name in self.user_feat_cols + self.item_feat_cols}
+
+            if stacked:
+                self.biases = tf.stack(list(self.biases.values()), axis=-1)
 
         return self.embeddings_user, self.embeddings_item, self.biases
 
@@ -143,18 +222,19 @@ class FactModel(object):
         embeddings_user, embeddings_item, biases = self.embedding_map.look_up(
             input_xn_d)
 
+        embs_all = {**embeddings_user, **embeddings_item}
+
+        fields_d = {
+            'user': self.embedding_map.user_feat_cols,
+            'item': self.embedding_map.item_feat_cols,
+        }
+
+        interaction_sets = preset_interactions(
+            fields_d, interaction_type='inter')
+
         with tf.name_scope('interaction_model'):
-            if self.intra_field:
-                embeddings = tf.concat(
-                    [embeddings_user, embeddings_item], axis=2)
-                prod = tf.matmul(embeddings, embeddings, transpose_a=True)
-            else:
-                prod = tf.matmul(
-                    embeddings_user, embeddings_item, transpose_a=True)
-
-            contrib_dot = tf.reduce_sum(prod, axis=[1, 2], name='contrib_dot')
-            contrib_bias = tf.reduce_sum(biases, axis=[1], name='contrib_bias')
-
+            contrib_dot = kernel_via_xn_sets(interaction_sets, embs_all)
+            contrib_bias = tf.add_n(list(biases.values()), name='contrib_bias')
             score = tf.add(contrib_dot, contrib_bias, name='score')
 
         return score
@@ -187,10 +267,12 @@ class FactModel(object):
                            if k.startswith(USER_VAR_TAG + TAG_DELIM)
                            or k.startswith(NEG_VAR_TAG + TAG_DELIM)}
 
-            pos_score = tf.identity(self.forward(
-                pos_input_d), name='pos_score')
-            neg_score = tf.identity(self.forward(
-                neg_input_d), name='neg_score')
+            with tf.name_scope('positive'):
+                pos_score = tf.identity(self.forward(
+                    pos_input_d), name='pos_score')
+            with tf.name_scope('negative'):
+                neg_score = tf.identity(self.forward(
+                    neg_input_d), name='neg_score')
 
             with tf.name_scope('loss'):
                 # Note: Hard coded BPR loss for now
