@@ -5,32 +5,87 @@ from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
 from tiefrex.core import fwd_dict_via_cats, pair_dict_via_cols
 from tiefrex import evaluation
+from typing import Optional
+from enum import Enum
+
+
+class FeatureType(Enum):
+    CATEGORICAL = 1
+    CONTINUOUS = 2
+
+
+class FeatureSource(object):
+    def __init__(self,
+                 path: str,
+                 feature_type: FeatureType,
+                 index_col: Optional[str]=None,
+                 ):
+        self.path = path
+        self.feature_type = feature_type
+        self.index_col = index_col
+
+        self.data = None
+
+    def load(self):
+        if self.data is not None:
+            logger.info('Already loaded')
+        else:
+            feat_df = custom_io \
+                .try_load(self.path, limit_dates=False)
+            if self.index_col:
+                feat_df.set_index(self.index_col, inplace=True)
+            if hasattr(feat_df, 'compute'):  # cant `.isin` dask
+                feat_df = feat_df.compute()
+            self.data = feat_df
+        return self
+
+
+class InteractionsSource(object):
+    def __init__(self,
+                 path: str,
+                 user_col: str,
+                 item_col: str,
+                 activity_col: Optional[str]=None,
+                 activity_filter_set: Optional[set]=None,
+                 ):
+        self.path = path
+        self.user_col = user_col
+        self.item_col = item_col
+        self.activity_col = activity_col
+        self.activity_filter_set = activity_filter_set
+
+        self.data = None
+
+    def load(self):
+        if self.data is not None:
+            logger.info('Already loaded')
+        else:
+            interactions_df = custom_io.try_load(self.path)
+            if self.activity_col and self.activity_filter_set:
+                interactions_df = custom_io.filter_col_isin(
+                    interactions_df, self.activity_col, self.activity_filter_set)
+            if hasattr(interactions_df, 'compute'):
+                interactions_df = interactions_df.compute()
+            self.data = interactions_df
+        return self
 
 
 class TrainDataLoader(object):
     def __init__(self, config):
         self.batch_size = config.get('batch_size')
         interactions_train = config.get('train_interactions')
-        path_interactions = interactions_train.path
-        activity_col = interactions_train.activity_column
+        self.activity_col = interactions_train.activity_col
+        self.user_col = interactions_train.user_col
+        self.item_col = interactions_train.item_col
 
-        user_col = interactions_train.user_id_column
-        self.user_col = user_col
-
-        item_col = interactions_train.item_id_column
-        self.item_col = item_col
-
-        activity_filter = interactions_train.filter_activity_set
         # TODO: Join on {user|item}_col rather than just taking the head
         user_features = config.get('user_features')
-        path_user_features = user_features[0].path if user_features else None
         item_features = config.get('item_features')
-        path_item_features = item_features[0].path if item_features else None
 
         self.interactions_df, self.user_feats_df, self.item_feats_df = load_simple(
-            path_interactions, path_user_features, path_item_features,
-            user_col, item_col,
-            activity_col, activity_filter
+            interactions_train,
+            user_features[0] if user_features else None,
+            item_features[0] if item_features else None,
         )
         self.user_feat_cols = self.user_feats_df.columns.tolist()
         self.item_feat_cols = self.item_feats_df.columns.tolist()
@@ -61,19 +116,13 @@ class Validator(object):
         self.item_feats_codes_df = item_feats_codes_df
 
         interactions_val = config.get('eval_interactions')
-        path_interactions_val = interactions_val.path
-        activity_col_val = interactions_val.activity_column
 
-        self.user_col_val = interactions_val.user_id_column
-        self.item_col_val = interactions_val.item_id_column
-
-        activity_filter_val = interactions_val.filter_activity_set
+        self.user_col_val = interactions_val.user_col
+        self.item_col_val = interactions_val.item_col
 
         self.interactions_val_df = load_simple_warm_cats(
-            path_interactions_val,
-            self.user_col_val, self.item_col_val,
+            interactions_val,
             self.cats_d[self.user_col_val], self.cats_d[self.item_col_val],
-            activity_col_val, activity_filter_val,
         )
 
     def ops(self, model):
@@ -106,31 +155,29 @@ class Validator(object):
 
 
 def load_simple(
-        path_interactions,
-        path_user_features, path_item_features,
-        user_col, item_col,
-        activity_col, activity_filter,):
-    """Stand-in loader mostly for local testing"""
+        interactions_src: InteractionsSource,
+        user_features_src: Optional[FeatureSource],
+        item_features_src: Optional[FeatureSource],
+):
+    """
+    Stand-in loader mostly for local testing
+    :param interactions_src: interactions data source
+    :param user_features_src: user features data source
+    :param item_features_src: item features data source
+    :return: 
+    """
 
-    interactions_df = custom_io.try_load(path_interactions)
-    interactions_df = custom_io.filter_col_isin(
-        interactions_df, activity_col, activity_filter).compute()
+    interactions_df = interactions_src.load().data
+    user_col = interactions_src.user_col
+    item_col = interactions_src.item_col
 
-    if path_user_features:
-        user_feats_df = custom_io \
-            .try_load(path_user_features, limit_dates=False) \
-            .set_index(user_col)
-        if hasattr(user_feats_df, 'compute'):  # cant isin dask
-            user_feats_df = user_feats_df.compute()
+    if user_features_src:
+        user_feats_df = user_features_src.load().data
     else:
         user_feats_df = pd.DataFrame(
             index=interactions_df[user_col].drop_duplicates())
-    if path_item_features:
-        item_feats_df = custom_io \
-            .try_load(path_item_features, limit_dates=False) \
-            .set_index(item_col)
-        if hasattr(item_feats_df, 'compute'):  # cant isin dask
-            item_feats_df = item_feats_df.compute()
+    if item_features_src:
+        item_feats_df = item_features_src.load().data
     else:
         item_feats_df = pd.DataFrame(
             index=interactions_df[item_col].drop_duplicates())
@@ -148,7 +195,7 @@ def load_simple(
     item_feats_df = item_feats_df.loc[interactions_df[item_col].unique()]
 
     # Use in the index as a feature (user and item specific eye feature)
-    # TODO: read {user|item}_speicific_feature: bool for conditional application of below
+    # TODO: read {user|item}_specific_feature: bool for conditional application of below
     user_feats_df[user_feats_df.index.name] = user_feats_df.index
     item_feats_df[item_feats_df.index.name] = item_feats_df.index
 
@@ -170,22 +217,21 @@ def load_simple(
 
 
 def load_simple_warm_cats(
-        path_interactions,
-        user_col, item_col,
+        interactions_src: InteractionsSource,
         users_filt, items_filt,
-        activity_col, activity_filter,):
+):
     """Stand-in validation data loader mostly for local testing
         * Filters out new users and items  *
-
+    :param interactions_src: interactions data source
     :param users_filt : typically, existing users
         ex) `user_feats_df[user_col].cat.categories)`
     :param items_filt : typically, existing items
         ex) `item_feats_df[item_col].cat.categories`
     """
 
-    interactions_df = custom_io.try_load(path_interactions)
-    interactions_df = custom_io.filter_col_isin(
-        interactions_df, activity_col, activity_filter).compute()
+    interactions_df = interactions_src.load().data
+    user_col = interactions_src.user_col
+    item_col = interactions_src.item_col
 
     # Simplifying assumption:
     # All interactions have an entry in the feature dfs

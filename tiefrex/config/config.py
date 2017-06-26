@@ -4,27 +4,10 @@ config file for tiefrex
 """
 
 import os
-from enum import Enum
 from tiefrex.constants import SEED, __file__
-from typing import NamedTuple
+from tiefrex.data import FeatureType, FeatureSource, InteractionsSource
 from time import strftime, gmtime
 
-
-class FeatureType(Enum):
-    CATEGORICAL = 1
-    CONTINUOUS = 2
-
-FeatureSource = NamedTuple('FeatureSource', [('path', str), ('feature_type',
-                                                             FeatureType)])
-InteractionsSource = NamedTuple(
-    'InteractionsSource', [('path', str), ('user_id_column', str),
-                           ('item_id_column', str), ('activity_column', str),
-                           ('filter_activity_set', set)])
-
-
-###                   ###
-#  Config Starts Here   #
-###                   ###
 
 local_data_dir = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), '../data/gilt')
@@ -39,29 +22,33 @@ target_interactions = os.path.join(
 train_interactions = InteractionsSource(
     path=os.path.join(local_data_dir,
                       'train/profile/user-product_activity_counts'),
-    user_id_column='ops_user_id',
-    item_id_column='ops_product_id',
-    activity_column='activity',
-    filter_activity_set={b'purch'}
+    user_col='ops_user_id',
+    item_col='ops_product_id',
+    activity_col='activity',
+    activity_filter_set={b'purch'}
     )
 
 eval_interactions = InteractionsSource(
     path=os.path.join(local_data_dir, 'val/profile/user-product_activity_counts'),
-    user_id_column='ops_user_id',
-    item_id_column='ops_product_id',
-    activity_column='activity',
-    filter_activity_set={b'purch'}
+    user_col='ops_user_id',
+    item_col='ops_product_id',
+    activity_col='activity',
+    activity_filter_set={b'purch'}
     )
 
 # user_features = [
 #     FeatureSource(
-#         os.path.join(local_data_dir, 'train/features/user_summary/'),
-#         FeatureType.CATEGORICAL),
+#         path=os.path.join(local_data_dir, 'train/features/user_summary/'),
+#         feature_type=FeatureType.CATEGORICAL,
+#         index_col='ops_user_id',
+#     ),
 # ]
 item_features = [
     FeatureSource(
-        os.path.join(local_data_dir, 'train/dim/dim_products.msg'),
-        FeatureType.CATEGORICAL),
+        path=os.path.join(local_data_dir, 'train/dim/dim_products.msg'),
+        feature_type=FeatureType.CATEGORICAL,
+        index_col='ops_product_id',
+    ),
 ]
 
 
