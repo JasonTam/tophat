@@ -6,7 +6,7 @@
 Grab 10 days of interaction data and some related dimensional data:
 
 ```
-data/get_fixture_small.sh
+./get_fixture_small.sh
 ```
 
 Build and enter Docker container. Run fit job:
