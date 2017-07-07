@@ -5,7 +5,8 @@ config file for tiefrex
 
 import os
 from tiefrex.constants import SEED, __file__
-from tiefrex.data import FeatureType, FeatureSource, InteractionsSource
+from tiefrex.data import FeatureSource, InteractionsSource
+from tiefrex.constants import FType
 from time import strftime, gmtime
 
 
@@ -45,9 +46,22 @@ eval_interactions = InteractionsSource(
 # ]
 item_features = [
     FeatureSource(
+        name='dim_products',
         path=os.path.join(local_data_dir, 'train/dim/dim_products.msg'),
-        feature_type=FeatureType.CATEGORICAL,
+        feature_type=FType.CAT,
         index_col='ops_product_id',
+    ),
+    FeatureSource(
+        name='product_prices',
+        path=os.path.join(local_data_dir, 'train/features/product_prices.msg'),
+        # Note: might want to have this as SCALAR
+        feature_type=FType.CAT,
+        index_col='ops_product_id',
+    ),
+    FeatureSource(
+        name='product_desc',
+        path=os.path.join(local_data_dir, 'train/features/product_descriptions/ops_product_id-description-D2V.msg'),
+        feature_type=FType.NUM,
     ),
 ]
 

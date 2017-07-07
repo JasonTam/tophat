@@ -6,6 +6,7 @@ import numpy as np
 import scipy.sparse as sp
 import tensorflow as tf
 from tiefrex.constants import *
+from tiefrex.data import TrainDataLoader
 from tiefrex.utils_sparse import get_row_nz
 from typing import Dict, Iterable, Sized
 
@@ -33,9 +34,24 @@ def feed_via_pair(input_pair_d: Dict[str, tf.Tensor],
     return feed_pair_dict
 
 
+def feed_via_inds(inds_batch, cols, codes_arr, num_arr, num_key):
+    """
+    :param inds_batch: indices of the batch to slice
+    :param cols: {user|item}_cols 
+    :param codes_arr: categorical codes array [n_total_samples x n_categorical_features]
+    :param num_arr: numerical features array [n_total_samples x n_numerical_features]
+    :param num_key: numerical features key
+    :return: 
+    """
+    d = dict(zip(cols, codes_arr[inds_batch, :].T))
+    if num_arr is not None and num_key is not None:
+        d[num_key] = num_arr[inds_batch, :]
+    return d
+
+
 class PairSampler(object):
     def __init__(self,
-                 train_data_loader,
+                 train_data_loader: TrainDataLoader,
                  input_pair_d: Dict[str, tf.Tensor],
                  batch_size: int=1024,
                  shuffle: bool=True,
@@ -55,10 +71,23 @@ class PairSampler(object):
         interactions_df = train_data_loader.interactions_df
         user_col = train_data_loader.user_col
         item_col = train_data_loader.item_col
+
+        # Index alignment
         user_feats_codes_df = train_data_loader.user_feats_codes_df.loc[
             train_data_loader.cats_d[train_data_loader.user_col]]
         item_feats_codes_df = train_data_loader.item_feats_codes_df.loc[
             train_data_loader.cats_d[train_data_loader.item_col]]
+
+        # Grab underlying numerical feature array(s)
+        self.user_num_feats_arr = None
+        self.item_num_feats_arr = None
+        if FType.NUM in train_data_loader.user_feats_d:
+            self.user_num_feats_arr = train_data_loader.user_feats_d[FType.NUM].loc[
+                train_data_loader.cats_d[train_data_loader.user_col]].values
+        if FType.NUM in train_data_loader.item_feats_d:
+            self.item_num_feats_arr = train_data_loader.item_feats_d[FType.NUM].loc[
+                train_data_loader.cats_d[train_data_loader.item_col]].values
+
         self.method = method
         self.get_negs = {
             'uniform': self.sample_uniform,
@@ -158,6 +187,22 @@ class PairSampler(object):
         """
         raise NotImplementedError
 
+    def user_feed_via_inds(self, user_inds_batch):
+        return feed_via_inds(user_inds_batch,
+                             self.user_cols,
+                             self.user_feats_codes_arr,
+                             self.user_num_feats_arr,
+                             num_key='user_num_feats',
+                             )
+
+    def item_feed_via_inds(self, item_inds_batch):
+        return feed_via_inds(item_inds_batch,
+                             self.item_cols,
+                             self.item_feats_codes_arr,
+                             self.item_num_feats_arr,
+                             num_key='item_num_feats',
+                             )
+
     def __iter__(self):
         # The feed dict generator itself
         # Note: can implement __next__ as well if we want book-keeping state info to be kept
@@ -172,12 +217,9 @@ class PairSampler(object):
                     user_inds_batch=user_inds_batch,
                     pos_item_inds_batch=pos_item_inds_batch,)
 
-                user_feed_d = dict(
-                    zip(self.user_cols, self.user_feats_codes_arr[user_inds_batch, :].T))
-                pos_item_feed_d = dict(
-                    zip(self.item_cols, self.item_feats_codes_arr[pos_item_inds_batch, :].T))
-                neg_item_feed_d = dict(
-                    zip(self.item_cols, self.item_feats_codes_arr[neg_item_inds_batch, :].T))
+                user_feed_d = self.user_feed_via_inds(user_inds_batch)
+                pos_item_feed_d = self.item_feed_via_inds(pos_item_inds_batch)
+                neg_item_feed_d = self.item_feed_via_inds(neg_item_inds_batch)
 
                 feed_pair_dict = feed_via_pair(
                     self.input_pair_d, user_feed_d, pos_item_feed_d, neg_item_feed_d)

@@ -3,23 +3,19 @@ import numpy as np
 import tensorflow as tf
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
-from tiefrex.core import fwd_dict_via_cats, pair_dict_via_cols
-from tiefrex import evaluation
-from typing import Optional
-from enum import Enum
-
-
-class FeatureType(Enum):
-    CATEGORICAL = 1
-    CONTINUOUS = 2
+from typing import Optional, Iterable, Tuple, Dict
+from collections import defaultdict
+from tiefrex.constants import FType
 
 
 class FeatureSource(object):
     def __init__(self,
                  path: str,
-                 feature_type: FeatureType,
+                 feature_type: FType,
                  index_col: Optional[str]=None,
+                 name=None,
                  ):
+        self.name = name
         self.path = path
         self.feature_type = feature_type
         self.index_col = index_col
@@ -78,92 +74,67 @@ class TrainDataLoader(object):
         self.user_col = interactions_train.user_col
         self.item_col = interactions_train.item_col
 
-        # TODO: Join on {user|item}_col rather than just taking the head
-        user_features = config.get('user_features')
-        item_features = config.get('item_features')
-
-        self.interactions_df, self.user_feats_df, self.item_feats_df = load_simple(
+        self.interactions_df, self.user_feats_d, self.item_feats_d = load_simple(
             interactions_train,
-            user_features[0] if user_features else None,
-            item_features[0] if item_features else None,
+            config.get('user_features'),
+            config.get('item_features'),
+            config.get('user_specific_feature'),
+            config.get('item_specific_feature'),
         )
-        self.user_feat_cols = self.user_feats_df.columns.tolist()
-        self.item_feat_cols = self.item_feats_df.columns.tolist()
+
+        # Process Categorical
+        self.user_cat_cols = self.user_feats_d[FType.CAT].columns.tolist()
+        self.item_cat_cols = self.item_feats_d[FType.CAT].columns.tolist()
 
         self.cats_d = {
-            **{feat_name: self.user_feats_df[feat_name].cat.categories.tolist()
-               for feat_name in self.user_feat_cols},
-            **{feat_name: self.item_feats_df[feat_name].cat.categories.tolist()
-               for feat_name in self.item_feat_cols},
+            **{feat_name: self.user_feats_d[FType.CAT][feat_name].cat.categories.tolist()
+               for feat_name in self.user_cat_cols},
+            **{feat_name: self.item_feats_d[FType.CAT][feat_name].cat.categories.tolist()
+               for feat_name in self.item_cat_cols},
         }
 
         # Convert all categorical cols to corresponding codes
-        self.user_feats_codes_df = self.user_feats_df.copy()
+        self.user_feats_codes_df = self.user_feats_d[FType.CAT].copy()
         for col in self.user_feats_codes_df.columns:
             self.user_feats_codes_df[col] = self.user_feats_codes_df[col].cat.codes
-        self.item_feats_codes_df = self.item_feats_df.copy()
+        self.item_feats_codes_df = self.item_feats_d[FType.CAT].copy()
         for col in self.item_feats_codes_df.columns:
             self.item_feats_codes_df[col] = self.item_feats_codes_df[col].cat.codes
+
+        # Process numerical metadata
+        # TODO: assuming numerical features aggregated into 1 table for now
+            # ^ else, `self.user_feats_d[FType.NUM]: Iterable`
+        self.user_num_feats_df = self.user_feats_d[FType.NUM] \
+            if FType.NUM in self.user_feats_d else None
+        self.item_num_feats_df = self.item_feats_d[FType.NUM] \
+            if FType.NUM in self.item_feats_d else None
+        # Gather metadata (size) of num feats
+        self.num_meta = {}
+        if self.user_num_feats_df is not None:
+            self.num_meta['user_num_feats'] = self.user_num_feats_df.shape[1]
+        if self.item_num_feats_df is not None:
+            self.num_meta['item_num_feats'] = self.item_num_feats_df.shape[1]
 
     def export_data_encoding(self):
         return self.cats_d, self.user_feats_codes_df, self.item_feats_codes_df
 
 
-class Validator(object):
-    def __init__(self, cats_d, user_feats_codes_df, item_feats_codes_df, config):
-        self.cats_d = cats_d
-        self.user_feats_codes_df = user_feats_codes_df
-        self.item_feats_codes_df = item_feats_codes_df
-
-        interactions_val = config.get('eval_interactions')
-
-        self.user_col_val = interactions_val.user_col
-        self.item_col_val = interactions_val.item_col
-
-        self.interactions_val_df = load_simple_warm_cats(
-            interactions_val,
-            self.cats_d[self.user_col_val], self.cats_d[self.item_col_val],
-        )
-
-    def ops(self, model):
-        # Eval ops
-        # Define our metrics: MAP@10 and AUC
-        self.model = model
-        self.item_ids = self.cats_d[self.item_col_val]
-        self.user_ids_val = self.interactions_val_df[self.user_col_val].unique()
-        np.random.shuffle(self.user_ids_val)
-
-        with tf.name_scope('placeholders'):
-            self.input_fwd_d = fwd_dict_via_cats(
-                self.cats_d.keys(), len(self.item_ids))
-
-        self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = evaluation.make_metrics_ops(
-            self.model.forward, self.input_fwd_d)
-
-    def run_val(self, sess, summary_writer, step):
-        evaluation.eval_things(
-            sess,
-            self.interactions_val_df,
-            self.user_col_val, self.item_col_val,
-            self.user_ids_val, self.item_ids,
-            self.user_feats_codes_df, self.item_feats_codes_df,
-            self.input_fwd_d,
-            self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d,
-            n_users_eval=20,
-            summary_writer=summary_writer, step=step,
-            )
-
-
 def load_simple(
         interactions_src: InteractionsSource,
-        user_features_src: Optional[FeatureSource],
-        item_features_src: Optional[FeatureSource],
-):
+        user_features_srcs: Optional[Iterable[FeatureSource]],
+        item_features_srcs: Optional[Iterable[FeatureSource]],
+        user_specific_feature: bool=True,
+        item_specific_feature: bool=True,
+) -> Tuple[pd.DataFrame, Dict[FType, pd.DataFrame], Dict[FType, pd.DataFrame]]:
     """
     Stand-in loader mostly for local testing
     :param interactions_src: interactions data source
-    :param user_features_src: user features data source
-    :param item_features_src: item features data source
+    :param user_features_srcs: user feature data sources
+        if `None`, user_id will be the sole user feature
+    :param item_features_srcs: item feature data sources
+        if `None`, item_id will be the sole item feature
+    :param user_specific_feature: if `True`, includes a user_id as a feature
+    :param item_specific_feature: if `True`, includes a item_id as a feature
     :return: 
     """
 
@@ -171,49 +142,71 @@ def load_simple(
     user_col = interactions_src.user_col
     item_col = interactions_src.item_col
 
-    if user_features_src:
-        user_feats_df = user_features_src.load().data
+    user_feats_d = {}
+    item_feats_d = {}
+    if user_features_srcs:
+        user_feats_d.update(load_many_srcs(user_features_srcs))
     else:
-        user_feats_df = pd.DataFrame(
+        user_feats_d[FType.CAT] = pd.DataFrame(
             index=interactions_df[user_col].drop_duplicates())
-    if item_features_src:
-        item_feats_df = item_features_src.load().data
+        user_specific_feature = True
+    if item_features_srcs:
+        item_feats_d.update(load_many_srcs(item_features_srcs))
     else:
-        item_feats_df = pd.DataFrame(
+        item_feats_d[FType.CAT] = pd.DataFrame(
             index=interactions_df[item_col].drop_duplicates())
+        item_specific_feature = True
 
-    # Simplifying assumption:
+    # TODO: Extreme simplifying assumption (should be handled better):
     # All interactions have an entry in the feature dfs
-    in_user_feats = interactions_df[user_col].isin(user_feats_df.index)
-    in_item_feats = interactions_df[item_col].isin(item_feats_df.index)
+    in_user_feats = interactions_df[user_col].isin(user_feats_d[FType.CAT].index)
+    in_item_feats = interactions_df[item_col].isin(item_feats_d[FType.CAT].index)
     interactions_df = interactions_df.loc[in_user_feats & in_item_feats]
+    # Same assumption with numerical features
+    if FType.NUM in user_feats_d:
+        in_user_feats = interactions_df[user_col].isin(user_feats_d[FType.NUM].index)
+        interactions_df = interactions_df.loc[in_user_feats]
+    if FType.NUM in item_feats_d:
+        in_item_feats = interactions_df[item_col].isin(item_feats_d[FType.NUM].index)
+        interactions_df = interactions_df.loc[in_item_feats]
 
     # And some more filtering
     # Get rid of rows in our feature dataframes that don't show up in interactions
     # (so we dont have a gazillion things in our vocab)
-    user_feats_df = user_feats_df.loc[interactions_df[user_col].unique()]
-    item_feats_df = item_feats_df.loc[interactions_df[item_col].unique()]
+    user_feats_d[FType.CAT] = user_feats_d[FType.CAT].loc[interactions_df[user_col].unique()]
+    item_feats_d[FType.CAT] = item_feats_d[FType.CAT].loc[interactions_df[item_col].unique()]
+
+    # index alignment for numerical features
+    if FType.NUM in user_feats_d:
+        user_feats_d[FType.NUM] = user_feats_d[FType.NUM] \
+            .loc[interactions_df[user_col].unique()]
+    if FType.NUM in item_feats_d:
+        item_feats_d[FType.NUM] = item_feats_d[FType.NUM] \
+            .loc[interactions_df[item_col].unique()]
 
     # Use in the index as a feature (user and item specific eye feature)
-    # TODO: read {user|item}_specific_feature: bool for conditional application of below
-    user_feats_df[user_feats_df.index.name] = user_feats_df.index
-    item_feats_df[item_feats_df.index.name] = item_feats_df.index
+    if user_specific_feature:
+        user_feats_d[FType.CAT][user_feats_d[FType.CAT].index.name] = \
+            user_feats_d[FType.CAT].index
+    if item_specific_feature:
+        item_feats_d[FType.CAT][item_feats_d[FType.CAT].index.name] = \
+            item_feats_d[FType.CAT].index
 
-    # Assume all categorical for now
-    for col in user_feats_df.columns:
-        user_feats_df[col] = user_feats_df[col].astype('category')
-    for col in item_feats_df.columns:
-        item_feats_df[col] = item_feats_df[col].astype('category')
+    # Cast categorical
+    for col in user_feats_d[FType.CAT].columns:
+        user_feats_d[FType.CAT][col] = user_feats_d[FType.CAT][col].astype('category')
+    for col in item_feats_d[FType.CAT].columns:
+        item_feats_d[FType.CAT][col] = item_feats_d[FType.CAT][col].astype('category')
     interactions_df[user_col] = interactions_df[user_col].astype(
-        'category', categories=user_feats_df[user_col].cat.categories)
+        'category', categories=user_feats_d[FType.CAT][user_col].cat.categories)
     interactions_df[item_col] = interactions_df[item_col].astype(
-        'category', categories=item_feats_df[item_col].cat.categories)
+        'category', categories=item_feats_d[FType.CAT][item_col].cat.categories)
 
     log_shape_or_npartitions(interactions_df, 'interactions_df')
-    log_shape_or_npartitions(user_feats_df, 'user_feats_df')
-    log_shape_or_npartitions(item_feats_df, 'item_feats_df')
+    log_shape_or_npartitions(user_feats_d[FType.CAT], 'user_feats_df')
+    log_shape_or_npartitions(item_feats_d[FType.CAT], 'item_feats_df')
 
-    return interactions_df, user_feats_df, item_feats_df
+    return interactions_df, user_feats_d, item_feats_d
 
 
 def load_simple_warm_cats(
@@ -247,3 +240,15 @@ def load_simple_warm_cats(
     log_shape_or_npartitions(interactions_df, 'warm interactions_df')
 
     return interactions_df
+
+
+def load_many_srcs(features_srcs: Iterable[FeatureSource]):
+    src_d = defaultdict(list)
+    for feat_src in features_srcs:
+        src_d[feat_src.feature_type].append(feat_src.load().data)
+
+    # Upfront join
+    # TODO: may consider NOT joining multiple numerical frames upfront
+    for feature_type, df_l in src_d.items():
+        src_d[feature_type] = pd.concat(df_l, axis=1)
+    return src_d

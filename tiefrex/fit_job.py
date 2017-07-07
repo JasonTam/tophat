@@ -8,9 +8,11 @@ from tiefrex.core import EmbeddingMap, EmbeddingProjector, FactModel
 from tiefrex.config.main_cfg import main_cfg
 from tiefrex.config.eval_cfg import eval_cfg
 from tiefrex import naive_sampler
-from tiefrex.data import TrainDataLoader, Validator
+from tiefrex.data import TrainDataLoader
+from tiefrex.evaluation import Validator
 from tiefrex.config_parser import Config
 from lib_cerebro_py.log import logger
+from tiefrex.constants import FType
 
 config = Config('tiefrex/config/config.py')
 
@@ -30,20 +32,29 @@ tf.gfile.MkDir(LOG_DIR)
 
 def run():
     train_data_loader = TrainDataLoader(config)
-    cats_d, user_feats_codes_df, item_feats_codes_df = train_data_loader.export_data_encoding()
-    validator = Validator(cats_d, user_feats_codes_df, item_feats_codes_df, config)
+    cats_d, user_cat_codes_df, item_cat_codes_df = train_data_loader.export_data_encoding()
+    # validator = Validator(
+    #     config, cats_d,
+    #     user_cat_codes_df, item_cat_codes_df,
+    #     train_data_loader.user_num_feats_df,
+    #     train_data_loader.item_num_feats_df,
+    #     )
+    validator = Validator(config, train_data_loader)
 
     # Ops and feature map
+    logger.info('Building graph ...')
     embedding_map = EmbeddingMap(train_data_loader, embedding_dim=EMB_DIM)
-    model = FactModel(embedding_map=embedding_map)
+    model = FactModel(embedding_map=embedding_map,
+                      num_meta=train_data_loader.num_meta)
     loss = model.get_loss()
     train_op = model.training(loss)
     validator.ops(model)
 
     # Sample Generator
+    logger.info('Setting up local sampler ...')
     sampler = naive_sampler.PairSampler(
         train_data_loader,
-        model.input_pair,
+        model.input_pair_d,
         batch_size,
         method='uniform',
     )
