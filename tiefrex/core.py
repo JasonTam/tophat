@@ -1,11 +1,10 @@
 import tensorflow as tf
 import itertools as it
 from tiefrex.constants import *
-from typing import List, Dict, Iterable, Sized, Set, Union, Tuple
+from typing import List, Dict, Iterable
 from tiefrex.metadata_proc import write_metadata_emb
 from tiefrex.constants import FType, FtypeMeta
 from tensorflow.contrib.tensorboard.plugins import projector
-from tiefrex.dense_processing import fc_reduction
 
 
 def preset_interactions(fields_d: Dict[str, Iterable[str]],
