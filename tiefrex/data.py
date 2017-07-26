@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
-from typing import Optional, Iterable, Tuple, Dict
+from typing import Optional, Iterable, Tuple, Dict, List
 from collections import defaultdict
 from tiefrex.constants import FType
 
@@ -13,12 +13,14 @@ class FeatureSource(object):
                  path: str,
                  feature_type: FType,
                  index_col: Optional[str]=None,
+                 use_cols: Optional[List[str]]=None,
                  name=None,
                  ):
         self.name = name
         self.path = path
         self.feature_type = feature_type
         self.index_col = index_col
+        self.use_cols = use_cols
 
         self.data = None
 
@@ -32,7 +34,10 @@ class FeatureSource(object):
                 feat_df.set_index(self.index_col, inplace=True)
             if hasattr(feat_df, 'compute'):  # cant `.isin` dask
                 feat_df = feat_df.compute()
-            self.data = feat_df
+            if self.use_cols:
+                self.data = feat_df[self.use_cols]
+            else:
+                self.data = feat_df
         return self
 
 
