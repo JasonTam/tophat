@@ -17,25 +17,16 @@ BUCKET_IMPORTS = 's3://cerebro-recengine-imports'
 BUCKET_FIXTURES = 's3://cerebro-recengine-fixtures'
 BUCKET_EXPORTS = 's3://cerebro-recengine-exports'
 
-target_interactions = os.path.join(
-    local_data_dir, 'train/profile/user-product_activity_counts')
-
 train_interactions = InteractionsSource(
     path=os.path.join(local_data_dir,
                       'train/profile/user-product_activity_counts'),
     user_col='ops_user_id',
     item_col='ops_product_id',
     activity_col='activity',
-    activity_filter_set={
-        b'purch',
-        # b'cart',
-        # b'list',
-        # b'click',
-        # b'visit',
-    }
+    activity_filter_set={b'purch'}
     )
 
-val_interactions = InteractionsSource(
+eval_interactions = InteractionsSource(
     path=os.path.join(local_data_dir, 'val/profile/user-product_activity_counts'),
     user_col='ops_user_id',
     item_col='ops_product_id',
@@ -53,10 +44,11 @@ val_interactions = InteractionsSource(
 item_features = [
     FeatureSource(
         name='dim_products',
-        path=os.path.join(local_data_dir, 'train/dim/dim_products.msg'),
+        # path=os.path.join(local_data_dir, 'train/dim/dim_products.msg'),
+        path=os.path.join(local_data_dir, 'dim_prod_subset_tmp.msg'),  # subset matching the available img embeddings
         feature_type=FType.CAT,
         index_col='ops_product_id',
-        # use_cols=['ops_brand_id'],
+        use_cols=['ops_brand_id'],
     ),
     # FeatureSource(
     #     name='product_prices',
@@ -67,29 +59,21 @@ item_features = [
     # ),
     # FeatureSource(
     #     name='product_desc',
-    #     path=os.path.join(local_data_dir, 'train/features/product_descriptions/ops_product_id-description-D2V.msg'),
+    #     # path=os.path.join(local_data_dir, 'train/features/product_descriptions/ops_product_id-description-D2V.msg'),
+    #     path=os.path.join(local_data_dir, 'train/features/product_descriptions/ops_product_id-description-D2V_scaled.msg'),
     #     feature_type=FType.NUM,
     # ),
-]
-
-
-val_item_features = [  # because features sometimes change and new items are added
     FeatureSource(
-        name='dim_products',
-        path=os.path.join(local_data_dir, 'val/dim/dim_products.msg'),
-        feature_type=FType.CAT,
-        index_col='ops_product_id',
-        # use_cols=['ops_brand_id'],
+        name='vgg_emb',
+        # path=os.path.join(local_data_dir, 'img_embs_procd/img_embs.msg'),
+        path=os.path.join(local_data_dir, 'img_embs_procd/img_embs_scaled.msg'),
+        feature_type=FType.NUM,
     ),
-    # FeatureSource(
-    #     name='product_desc',
-    #     path=os.path.join(local_data_dir, 'train/features/product_descriptions/ops_product_id-description-D2V.msg'),
-    #     feature_type=FType.NUM,
-    # ),
 ]
+
 
 user_specific_feature = True
-item_specific_feature = False
+item_specific_feature = True
 
 seed = SEED
 

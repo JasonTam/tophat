@@ -1,80 +1,12 @@
 import tensorflow as tf
+import numpy as np
 import itertools as it
 from tiefrex.constants import *
-from typing import List, Dict, Iterable
+from tiefrex.ph_conversions import *
 from tiefrex.metadata_proc import write_metadata_emb
-from tiefrex.constants import FType, FtypeMeta
+from tiefrex.nets import *
 from tensorflow.contrib.tensorboard.plugins import projector
-
-
-def preset_interactions(fields_d: Dict[str, Iterable[str]],
-                        interaction_type: str='inter',
-                        max_order: int=2
-                        ) -> Iterable[frozenset]:
-    """
-    Convenience feature interaction planner for common interaction types
-    :param fields_d: dictionary of group_name to iterable of feat_names that belong to that group
-        ex) `fields_d = {'user': {'gender', 'age'}, 'item': {'brand', 'pcat', 'price'}}`
-    :param interaction_type: preset type
-    :param max_order: max order of interactions  
-    :return: Iterable of interaction sets
-    """
-    if interaction_type == 'intra':  # includes intra field
-        feature_pairs = it.chain(
-            *(it.combinations(
-                it.chain(*fields_d.values()), order)
-                for order in range(2, max_order + 1)))
-    elif interaction_type == 'inter':  # only inter field
-        feature_pairs = it.product(*fields_d.values())
-    else:
-        raise ValueError
-
-    return map(frozenset, feature_pairs)
-
-
-def kernel_via_xn_sets(interaction_sets: Iterable[frozenset],
-                       emb_d: Dict[str, tf.Tensor]) -> tf.Tensor:
-    """
-    Computes arbitrary order interaction terms
-    Reuses lower order terms
-
-    Differs from typical HOFM as we will reuse lower order embeddings
-        (not actually sure if this is OK in terms of expressiveness)
-        In theory, we're supposed to use a new param matrix for each order
-            Much like how we use a bias param for order=1
-    :param interaction_sets: interactions to create nodes for
-    :param emb_d: dictionary of embedding tensors
-        NOTE: would include an additional `order` key to match HOFM literature
-    :return: 
-
-    References:
-        Blondel, Mathieu, et al. "Higher-Order Factorization Machines." 
-            Advances in Neural Information Processing Systems. 2016.
-    """
-    # TODO: for now we assume that all dependencies of previous order are met
-
-    interaction_sets = list(interaction_sets)
-    # Populate xn nodes with single terms (order 1)
-    xn_nodes: Dict[frozenset, tf.Tensor] = {
-        frozenset({k}): v for k, v in emb_d.items()}
-    unq_orders = set(map(len, interaction_sets))
-    for order in range(min(unq_orders), max(unq_orders) + 1):
-        with tf.name_scope(f'xn_order_{order}'):
-            for xn in interaction_sets:
-                if len(xn) == order:
-                    xn_l = list(xn)
-                    xn_nodes[xn] = tf.multiply(
-                        xn_nodes[frozenset(xn_l[:-1])],  # cached portion (if ho)
-                        xn_nodes[frozenset({xn_l[-1]})],  # last as new term
-                        name='X'.join(xn)
-                    )
-
-    # Reduce nodes of order > 1
-    contrib_dot = tf.add_n([
-        tf.reduce_sum(node, 1, keep_dims=False)
-        for s, node in xn_nodes.items() if len(s) > 1
-    ], name='contrib_dot')
-    return contrib_dot
+from typing import List, Dict, Iterable
 
 
 class EmbeddingProjector(object):
@@ -96,101 +28,13 @@ class EmbeddingProjector(object):
         projector.visualize_embeddings(self.summary_writer, self.projection_config)
 
 
-class EmbeddingMap(object):
-    def __init__(self,
-                 data_loader,
-                 embedding_dim: int=16,
-                 l2: float=1e-5,
-                 seed=SEED
-                 ):
-        """
-        :param data_loader: Expecting tiefrex.data.TrainDataLoader
-        :param embedding_dim: number of dimensions in each embedding matrix (number of latent factors)
-        :param l2: l2 regularization scale (0 to disable)
-        """
-        self.seed = seed
-        self.data_loader = data_loader
-        self.cats_d = data_loader.cats_d
-        self.user_cat_cols = data_loader.user_cat_cols
-        self.item_cat_cols = data_loader.item_cat_cols
-
-        self.l2 = l2
-        self.regularizer = tf.contrib.layers.l2_regularizer(scale=self.l2)
-
-        self.embedding_dim = embedding_dim
-        # Note: possibly need an emb for NaN code
-        #     (can be index 0, and we will always add 1 to our codes)
-        #     else, it should map to 0's tensor
-
-        with tf.variable_scope('embeddings'):
-            self.embeddings_d = {
-                feat_name: tf.get_variable(
-                    name=f'{feat_name}_embs',
-                    shape=[len(cats), embedding_dim],
-                    initializer=tf.random_normal_initializer(
-                        mean=0., stddev=1. / self.embedding_dim, seed=self.seed),
-                    regularizer=self.regularizer
-                )
-                for feat_name, cats in self.cats_d.items()
-            }
-
-        with tf.variable_scope('biases'):
-            self.biases_d = {
-                feat_name: tf.get_variable(
-                    name=f'{feat_name}_biases',
-                    shape=[len(cats)],
-                    initializer=tf.zeros_initializer()
-                )
-                for feat_name, cats in self.cats_d.items()
-            }
-
-    def look_up(self, input_xn_d, stacked=False):
-        """
-        :param input_xn_d: dictionary of feature names to category codes
-            for a single interaction
-        :param stacked: if `True`, stack the embeddings of each group into a single tensor
-        """
-        with tf.name_scope('user_lookup'):
-            self.embeddings_user = {
-                feat_name:
-                    tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
-                                           name=f'{feat_name}_emb')
-                for feat_name in self.user_cat_cols}
-            if stacked:
-                self.embeddings_user = tf.stack(list(self.embeddings_user.values()), axis=-1)
-
-        with tf.name_scope('item_lookup'):
-            self.embeddings_item = {
-                feat_name:
-                    tf.nn.embedding_lookup(self.embeddings_d[feat_name], input_xn_d[feat_name],
-                                           name=f'{feat_name}_emb')
-                for feat_name in self.item_cat_cols}
-
-            if stacked:
-                self.embeddings_item = tf.stack(list(self.embeddings_item.values()), axis=-1)
-
-        with tf.name_scope('bias_lookup'):
-            self.biases = {
-                feat_name:
-                    tf.nn.embedding_lookup(self.biases_d[feat_name], input_xn_d[feat_name],
-                                           name=f'{feat_name}_bias')
-                for feat_name in self.user_cat_cols + self.item_cat_cols}
-
-            if stacked:
-                self.biases = tf.stack(list(self.biases.values()), axis=-1)
-
-        return self.embeddings_user, self.embeddings_item, self.biases
-
-
 class FactModel(object):
 
     def __init__(self,
-                 embedding_map: EmbeddingMap,
-                 # loss_type: str='bpr',
-                 num_meta: Dict[str, int]=None,
-                 l2: float=1e-5,
-                 intra_field: bool=False,
-                 optimizer: tf.train.Optimizer=tf.train.AdamOptimizer(),
+                 net,
+                 optimizer: tf.train.Optimizer = tf.train.AdamOptimizer(learning_rate=0.001),
+                 # optimizer: tf.train.Optimizer = tf.train.AdagradOptimizer(learning_rate=0.05),
+                 # optimizer: tf.train.Optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1),
                  seed=SEED,
                  ):
         """
@@ -203,107 +47,29 @@ class FactModel(object):
         """
 
         self.seed = seed
-
-        self.embedding_map = embedding_map
-
-        self.num_meta = num_meta or {}
-        # Params for numerical features
-        # embedding matrix (for each numerical feature) -- fully connected layer
-        self.W_fc_num_d = {}
-        self.b_fc_num_d = {}  # bias for fully connected
-        self.b_num_factor_d = {}
-        # self.b_num_d = {}  # vbpr paper uses this shady bias matrix (beta')
-        with tf.name_scope('numerical_reduction'):
-            for feat_name, dim in self.num_meta.items():
-                self.W_fc_num_d[feat_name] = tf.get_variable(  # vbpr: E
-                    name=f'{feat_name}_fc_embedder',
-                    shape=[dim, self.embedding_map.embedding_dim],
-                    initializer=tf.random_normal_initializer(stddev=0.01)
-                )
-                self.b_fc_num_d[feat_name] = tf.get_variable(  # bias for vbpr: E
-                    name=f'{feat_name}_fc_bias',
-                    shape=[self.embedding_map.embedding_dim],
-                    initializer=tf.zeros_initializer()
-                )
-                self.b_num_factor_d[feat_name] = tf.get_variable(  # just a scalar
-                    name=f'{feat_name}_bias',
-                    shape=[1],
-                    initializer=tf.zeros_initializer()
-                )
-                # self.b_num_d[feat_name] = bias_variable([dim])  # vbpr: beta'
-
-        self.l2 = l2
-        self.regularizer = tf.contrib.layers.l2_regularizer(scale=self.l2)
-
-        self.intra_field = intra_field
+        self.net = net
         self.optimizer = optimizer
-
         self.input_pair_d: Dict[str, tf.Tensor] = None
+
+        self.forward = self.net.forward
+
+        # Make Placeholders according to our cats
+        with tf.name_scope('placeholders'):
+            self.input_pair_d = self.get_pair_dict(self.net.embedding_map.data_loader.batch_size)
 
     def get_fwd_dict(self, batch_size):
         return fwd_dict_via_cats(
-            self.embedding_map.cats_d.keys(),
+            self.net.embedding_map.cats_d.keys(),
             batch_size)
-
-    def forward(self, input_xn_d: Dict[str, tf.Tensor]) -> tf.Tensor:
-        """
-        Forward inference step to score a user-item interaction
-        :param input_xn_d: dictionary of feature names to category codes
-            for a single interaction
-        """
-
-        # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, biases = self.embedding_map.look_up(
-            input_xn_d)
-
-        # Handle dense (fully connected reduction of dense features)
-        # TODO: assume for now that all num feats are item-related (else, need extra book-keeping)
-        user_num_cols = []
-        item_num_cols = list(self.num_meta.keys())
-        num_emb_d = {
-            feat_name: tf.matmul(
-                input_xn_d[feat_name], self.W_fc_num_d[feat_name])
-            + self.b_fc_num_d[feat_name]  # fc bias
-            for feat_name in self.num_meta.keys()
-        }
-        embeddings_item.update(num_emb_d)
-
-        embs_all = {**embeddings_user, **embeddings_item}
-
-        fields_d = {
-            'user': self.embedding_map.user_cat_cols + user_num_cols,
-            'item': self.embedding_map.item_cat_cols + item_num_cols,
-        }
-
-        interaction_sets = preset_interactions(
-            fields_d, interaction_type='inter')
-
-        with tf.name_scope('interaction_model'):
-            contrib_dot = kernel_via_xn_sets(interaction_sets, embs_all)
-            # bias for cat feature factors
-            contrib_bias = tf.add_n(list(biases.values()), name='contrib_bias')
-            if self.b_num_factor_d.values():
-                # bias for num feature factors
-                contrib_bias += tf.add_n(list(self.b_num_factor_d.values()))
-            # # NOTE: vbpr paper uses a shady bias matrix that we take a dot product with original numerical
-            # if self.b_num_d:
-            #     contrib_bias += tf.add_n(
-            #         [tf.reduce_sum(
-            #             tf.multiply(input_xn_d[feat_name], self.b_num_d[feat_name])
-            #         ) for feat_name in self.num_meta.keys()])
-
-            score = tf.add(contrib_dot, contrib_bias, name='score')
-
-        return score
 
     def get_pair_dict(self, batch_size):
         return pair_dict_via_ftypemeta(
-            {FType.CAT: self.embedding_map.user_cat_cols,
-             FType.NUM: []
+            {FType.CAT: self.net.embedding_map.user_cat_cols,
+             FType.NUM: [],
              },
-            {FType.CAT: self.embedding_map.item_cat_cols,
+            {FType.CAT: self.net.embedding_map.item_cat_cols,
              # TODO: assume for now that all num feats are item-related (else, need extra book-keeping)
-             FType.NUM: list(self.num_meta.items())
+             FType.NUM: list(self.net.num_meta.items()) if hasattr(self.net, 'num_meta') else [],
              },
             batch_size)
 
@@ -314,9 +80,6 @@ class FactModel(object):
             for a pos/neg pair of interactions
         :return: scalar loss
         """
-        # Make Placeholders according to our cats
-        with tf.name_scope('placeholders'):
-            self.input_pair_d = self.get_pair_dict(self.embedding_map.data_loader.batch_size)
 
         with tf.name_scope('model'):
             # Split up input into pos & neg interaction
@@ -340,6 +103,11 @@ class FactModel(object):
                     pos_score - neg_score), name='bpr')
                 return tf.reduce_mean(loss_bpr, name='bpr_mean')
 
+                # loss_hinge = tf.clip_by_value(neg_score - pos_score + 1.,
+                #                               clip_value_min=0., clip_value_max=999999.,
+                #                               name='hinge')
+                # return tf.reduce_mean(loss_hinge, name='hinge_mean')
+
     def training(self, loss) -> tf.Operation:
         """
         :param loss: scalar loss
@@ -356,97 +124,3 @@ class FactModel(object):
 
         train_op = self.optimizer.minimize(loss_tot, global_step=global_step)
         return train_op
-
-
-def fwd_dict_via_cats(cat_keys: Iterable[str], batch_size: int) -> Dict[str, tf.Tensor]:
-    """ Creates placeholders for forward inference
-    :param cat_keys: feature names
-    :param batch_size: 
-    :return: dictionary of placeholders
-    """
-    input_forward_d = {
-        feat_name: tf.placeholder(tf.int32, shape=[batch_size],
-                                  name=f'{feat_name}_input')
-        for feat_name in cat_keys
-    }
-    return input_forward_d
-
-
-def pair_dict_via_cols(user_cat_cols: Iterable[str],
-                       item_cat_cols: Iterable[str],
-                       batch_size: int) -> Dict[str, tf.Tensor]:
-    """ Creates placeholders for paired loss
-    :param user_cat_cols: 
-    :param item_cat_cols: 
-    :param batch_size: 
-    :return: 
-    """
-    input_pair_d = {
-        **{f'{USER_VAR_TAG}.{feat_name}': tf.placeholder(
-            tf.int32, shape=[batch_size], name=f'{USER_VAR_TAG}.{feat_name}_input')
-            for feat_name in user_cat_cols},
-        **{f'{POS_VAR_TAG}.{feat_name}': tf.placeholder(
-            tf.int32, shape=[batch_size], name=f'{POS_VAR_TAG}.{feat_name}_input')
-            for feat_name in item_cat_cols},
-        **{f'{NEG_VAR_TAG}.{feat_name}': tf.placeholder(
-            tf.int32, shape=[batch_size], name=f'{NEG_VAR_TAG}.{feat_name}_input')
-            for feat_name in item_cat_cols}
-    }
-    return input_pair_d
-
-
-######
-
-def ph_dict_via_feats(feat_names: List[str], batch_size: int, dtype,
-                      input_size=1,
-                      tag: str=None,
-                      ) -> Dict[str, tf.Tensor]:
-    """ Creates a dictionary of placeholders keyed by feature name 
-    """
-    if input_size > 1:
-        ph_shape = [batch_size, input_size]
-    else:
-        ph_shape = [batch_size]
-
-    if tag:
-        def name(s): return f'{tag}.{s}_input'
-
-        def key(s): return f'{tag}.{s}'
-    else:
-        def name(s): return f'{s}_input'
-
-        def key(s): return f'{s}'
-
-    return {key(feat_name): tf.placeholder(
-        dtype, shape=ph_shape, name=name(feat_name))
-        for feat_name in feat_names}
-
-
-def ph_via_ftypemeta(ftypemeta: FtypeMeta,
-                     batch_size: int, tag: str=None) -> Dict[str, tf.Tensor]:
-    cat_d = ph_dict_via_feats(ftypemeta[FType.CAT], batch_size, dtype=tf.int32, tag=tag)
-    if FType.NUM in ftypemeta:
-        num_ph_l = [
-            ph_dict_via_feats([tup[0]], batch_size, dtype=tf.float32, tag=tag, input_size=tup[1])
-            for tup in ftypemeta[FType.NUM]]
-        num_d = {k: v for d in num_ph_l for k, v in d.items()}
-    else:
-        num_d = {}
-    return {**cat_d, **num_d}
-
-
-def pair_dict_via_ftypemeta(
-        user_ftypemeta: FtypeMeta,
-        item_ftypemeta: FtypeMeta,
-        batch_size: int) -> Dict[str, tf.Tensor]:
-    input_pair_d = {
-        **ph_via_ftypemeta(user_ftypemeta, batch_size, tag=USER_VAR_TAG),
-        **ph_via_ftypemeta(item_ftypemeta, batch_size, tag=POS_VAR_TAG),
-        **ph_via_ftypemeta(item_ftypemeta, batch_size, tag=NEG_VAR_TAG),
-    }
-    return input_pair_d
-
-
-def fwd_dict_via_ftypemeta(
-        ftypemeta: FtypeMeta, batch_size: int) -> Dict[str, tf.Tensor]:
-    return ph_via_ftypemeta(ftypemeta, batch_size, tag=None)

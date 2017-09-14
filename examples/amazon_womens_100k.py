@@ -4,6 +4,7 @@ from tensorflow.python import debug as tf_debug
 from time import time
 
 import os
+import argparse
 
 from tiefrex.core import EmbeddingProjector, FactModel
 from tiefrex.nets import EmbeddingMap, BilinearNet, BilinearNetWithNum, BilinearNetWithNumFC
@@ -17,49 +18,36 @@ from tiefrex.config_parser import Config
 from lib_cerebro_py.log import logger
 from tiefrex.constants import FType
 
-config = Config('tiefrex/config/config.py')
-# config = Config('tiefrex/config/config_looks.py')
-# config = Config('tiefrex/config/config_amzn.py')
-# config = Config('tiefrex/config/config_test.py')
-
 env = 'local'
 
-SEED = config.get('seed')
-np.random.seed(SEED)
-
 EMB_DIM = 16
-batch_size = config.get('batch_size')
 n_steps = 50000+1
 log_every = 100
 eval_every = 1000
 save_every = 50000
-LOG_DIR = config.get('log_dir')
-tf.gfile.MkDir(LOG_DIR)
 
 
-def run():
+def run(config):
+    batch_size = config.get('batch_size')
     train_data_loader = TrainDataLoader(config)
     validator = Validator(config, train_data_loader,
                           limit_items=40000, n_users_eval=500,
-                          include_cold=True, cold_only=False)
+                          include_cold=True, cold_only=False, n_xns_as_cold=5)
 
     # Ops and feature map
     logger.info('Building graph ...')
     embedding_map = EmbeddingMap(train_data_loader, embedding_dim=EMB_DIM,
                                  zero_init_rows=validator.zero_init_rows,
+                                 l2_bias=0., l2_emb=1e-4,
+                                 vis_specific_embs=True,
                                  )
 
-    # model = FactModel(net=BilinearNet(
-    #     embedding_map=embedding_map)
-    # )
     model = FactModel(net=BilinearNetWithNum(
         embedding_map=embedding_map,
-        num_meta=train_data_loader.num_meta)
+        num_meta=train_data_loader.num_meta,
+        l2_vis=0.,
+        ruin=True)
     )
-    # model = FactModel(net=BilinearNetWithNumFC(
-    #     embedding_map=embedding_map,
-    #     num_meta=train_data_loader.num_meta)
-    # )
 
     loss = model.get_loss()
     train_op = model.training(loss)
@@ -70,8 +58,9 @@ def run():
     sampler = naive_sampler.PairSampler(
         train_data_loader,
         model.input_pair_d,
-        batch_size,
+        batch_size=batch_size,
         method='uniform',
+        uniform_users=True,
     )
     feed_dict_gen = iter(sampler)
 
@@ -117,4 +106,15 @@ def run():
 
 
 if __name__ == '__main__':
-    run()
+    parser = argparse.ArgumentParser(
+            description='Fit and evaluate on amazon womens small dataset')
+    parser.add_argument('method', help='bpr or vbpr',
+                        default='bpr', nargs='?',
+                        choices=['bpr', 'vbpr'])
+    args = parser.parse_args()
+    config = Config(f'tiefrex/config/config_amzn_{args.method}.py')
+    SEED = config.get('seed')
+    np.random.seed(SEED)
+    LOG_DIR = config.get('log_dir')
+    tf.gfile.MkDir(LOG_DIR)
+    run(config)

@@ -56,6 +56,7 @@ class PairSampler(object):
                  batch_size: int=1024,
                  shuffle: bool=True,
                  n_epochs: int=-1,
+                 uniform_users: bool=False,
                  method: str='uniform',
                  net=None,
                  ):
@@ -65,6 +66,8 @@ class PairSampler(object):
         :param batch_size: batch size
         :param shuffle: if `True`, batches will be sampled from a shuffled index
         :param n_epochs: number of epochs until `StopIteration`
+        :param uniform_users: if `True` sample by user rather than by positive interaction
+            (~optimize all users equally rather than weighing more active users)
         :param method: negative sampling method
         :param net: network object that implements a forward method for adaptive sampling
         """
@@ -99,6 +102,8 @@ class PairSampler(object):
         self.batch_size = batch_size
         self.shuffle = shuffle
 
+        self.uniform_users = uniform_users
+
         self.input_pair_d = input_pair_d
         self._net = net
 
@@ -111,12 +116,17 @@ class PairSampler(object):
               interactions_df[item_col].cat.codes)),
             shape=(self.n_users, self.n_items), dtype=bool)
 
-        if self.method in {'uniform_verified', 'adaptive'}:
+        if self.method in {'uniform_verified', 'adaptive'} or self.uniform_users:
             self.xn_csr = self.xn_coo.tocsr()
         else:
             self.xn_csr = None
 
-        self.shuffle_inds = np.arange(len(self.xn_coo.data))
+        if self.uniform_users:
+            # index for each user
+            self.shuffle_inds = np.arange(self.n_users)
+        else:
+            # index for each pos interaction
+            self.shuffle_inds = np.arange(len(self.xn_coo.data))
 
         self.user_feats_codes_arr = user_feats_codes_df.values
         self.item_feats_codes_arr = item_feats_codes_df.values
@@ -133,6 +143,12 @@ class PairSampler(object):
             self.neg_fwd_op = self._net.forward(self.neg_fwd_d)
 
             self.sess.run(tf.global_variables_initializer())
+
+    def __iter__(self):
+        if self.uniform_users:
+            return self.iter_by_user()
+        else:
+            return self.iter_by_xn()
 
     def sample_uniform(self, **_):
         return np.random.randint(self.n_items, size=self.batch_size)
@@ -203,16 +219,48 @@ class PairSampler(object):
                              num_key='item_num_feats',
                              )
 
-    def __iter__(self):
+    def iter_by_xn(self):
         # The feed dict generator itself
         # Note: can implement __next__ as well if we want book-keeping state info to be kept
         for i in range(self.n_epochs):
             if self.shuffle:
                 np.random.shuffle(self.shuffle_inds)
-            inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)
+            inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)  # TODO: problem if less inds than batch_size
             for inds_batch in inds_batcher:
                 user_inds_batch = self.xn_coo.row[inds_batch]
                 pos_item_inds_batch = self.xn_coo.col[inds_batch]
+                neg_item_inds_batch = self.get_negs(
+                    user_inds_batch=user_inds_batch,
+                    pos_item_inds_batch=pos_item_inds_batch,)
+
+                user_feed_d = self.user_feed_via_inds(user_inds_batch)
+                pos_item_feed_d = self.item_feed_via_inds(pos_item_inds_batch)
+                neg_item_feed_d = self.item_feed_via_inds(neg_item_inds_batch)
+
+                feed_pair_dict = feed_via_pair(
+                    self.input_pair_d, user_feed_d, pos_item_feed_d, neg_item_feed_d)
+                yield feed_pair_dict
+
+    def iter_by_user(self):
+        # The feed dict generator itself
+        # Note: can implement __next__ as well if we want book-keeping state info to be kept
+        for i in range(self.n_epochs):
+            if self.shuffle:
+                np.random.shuffle(self.shuffle_inds)
+            inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)  # TODO: problem if less inds than batch_size
+            for inds_batch in inds_batcher:
+                # TODO: WIP>>>
+                user_inds_batch = inds_batch
+                pos_l = []
+                # import ipdb; ipdb.set_trace()
+                for user_ind in user_inds_batch:
+                    user_pos_item_inds = get_row_nz(self.xn_csr, user_ind)
+                    # `random.choice` slow
+                    user_pos_item = user_pos_item_inds[np.random.randint(len(user_pos_item_inds))]
+                    pos_l.append(user_pos_item)
+                # Select random known pos for user
+                # pos_item_inds_batch = self.xn_coo.col[inds_batch]
+                pos_item_inds_batch = np.array(pos_l)
                 neg_item_inds_batch = self.get_negs(
                     user_inds_batch=user_inds_batch,
                     pos_item_inds_batch=pos_item_inds_batch,)

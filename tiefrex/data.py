@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
-from typing import Optional, Iterable, Tuple, Dict, List
+from typing import Optional, Iterable, Tuple, Dict, List, Any
 from collections import defaultdict
 from tiefrex.constants import FType
 
@@ -24,7 +24,7 @@ class FeatureSource(object):
 
         self.data = None
 
-    def load(self):
+    def load(self, force_reload=False):
         if self.data is not None:
             logger.info('Already loaded')
         else:
@@ -36,6 +36,9 @@ class FeatureSource(object):
                 feat_df = feat_df.compute()
             if self.use_cols:
                 self.data = feat_df[self.use_cols]
+            elif self.use_cols == []:
+                # Empty dataframe (rely on {user|item} specific feature
+                self.data = pd.DataFrame(index=feat_df.index)
             else:
                 self.data = feat_df
         return self
@@ -62,6 +65,9 @@ class InteractionsSource(object):
             logger.info('Already loaded')
         else:
             interactions_df = custom_io.try_load(self.path)
+            if 'value' in interactions_df.columns \
+                    and self.item_col not in interactions_df.columns:
+                interactions_df = interactions_df.rename(columns={'value': self.item_col})
             if self.activity_col and self.activity_filter_set:
                 interactions_df = custom_io.filter_col_isin(
                     interactions_df, self.activity_col, self.activity_filter_set)
@@ -78,6 +84,12 @@ class TrainDataLoader(object):
         self.activity_col = interactions_train.activity_col
         self.user_col = interactions_train.user_col
         self.item_col = interactions_train.item_col
+
+        self.user_feats_codes_df = None
+        self.item_feats_codes_df = None
+        self.user_num_feats_df = None
+        self.item_num_feats_df = None
+        self.num_meta = None
 
         self.interactions_df, self.user_feats_d, self.item_feats_d = load_simple(
             interactions_train,
@@ -97,7 +109,19 @@ class TrainDataLoader(object):
             **{feat_name: self.item_feats_d[FType.CAT][feat_name].cat.categories.tolist()
                for feat_name in self.item_cat_cols},
         }
+        # If the user or item ids are not present in feature tables
+        if self.user_col not in self.cats_d:
+            self.cats_d[self.user_col] = self.interactions_df[self.user_col].cat.categories.tolist()
+        if self.item_col not in self.cats_d:
+            self.cats_d[self.item_col] = self.interactions_df[self.item_col].cat.categories.tolist()
 
+        self.make_feat_codes()
+        self.process_num()
+
+    def export_data_encoding(self):
+        return self.cats_d, self.user_feats_codes_df, self.item_feats_codes_df
+
+    def make_feat_codes(self):
         # Convert all categorical cols to corresponding codes
         self.user_feats_codes_df = self.user_feats_d[FType.CAT].copy()
         for col in self.user_feats_codes_df.columns:
@@ -106,9 +130,10 @@ class TrainDataLoader(object):
         for col in self.item_feats_codes_df.columns:
             self.item_feats_codes_df[col] = self.item_feats_codes_df[col].cat.codes
 
+    def process_num(self):
         # Process numerical metadata
         # TODO: assuming numerical features aggregated into 1 table for now
-            # ^ else, `self.user_feats_d[FType.NUM]: Iterable`
+        # ^ else, `self.user_feats_d[FType.NUM]: Iterable`
         self.user_num_feats_df = self.user_feats_d[FType.NUM] \
             if FType.NUM in self.user_feats_d else None
         self.item_num_feats_df = self.item_feats_d[FType.NUM] \
@@ -120,9 +145,6 @@ class TrainDataLoader(object):
         if self.item_num_feats_df is not None:
             self.num_meta['item_num_feats'] = self.item_num_feats_df.shape[1]
 
-    def export_data_encoding(self):
-        return self.cats_d, self.user_feats_codes_df, self.item_feats_codes_df
-
 
 def load_simple(
         interactions_src: InteractionsSource,
@@ -130,6 +152,7 @@ def load_simple(
         item_features_srcs: Optional[Iterable[FeatureSource]],
         user_specific_feature: bool=True,
         item_specific_feature: bool=True,
+        existing_cats_d: Optional[Dict[str, List[Any]]]=None,
 ) -> Tuple[pd.DataFrame, Dict[FType, pd.DataFrame], Dict[FType, pd.DataFrame]]:
     """
     Stand-in loader mostly for local testing
@@ -140,6 +163,7 @@ def load_simple(
         if `None`, item_id will be the sole item feature
     :param user_specific_feature: if `True`, includes a user_id as a feature
     :param item_specific_feature: if `True`, includes a item_id as a feature
+    :param existing_cats_d: optional existing dictionary of categories to use
     :return: 
     """
 
@@ -151,35 +175,23 @@ def load_simple(
     item_feats_d = {}
     if user_features_srcs:
         user_feats_d.update(load_many_srcs(user_features_srcs))
-    else:
+    if not user_features_srcs or not any([src.feature_type == FType.CAT for src in user_features_srcs]):
         user_feats_d[FType.CAT] = pd.DataFrame(
             index=interactions_df[user_col].drop_duplicates())
         user_specific_feature = True
     if item_features_srcs:
         item_feats_d.update(load_many_srcs(item_features_srcs))
-    else:
+    if not item_features_srcs or not any([src.feature_type == FType.CAT for src in item_features_srcs]):
         item_feats_d[FType.CAT] = pd.DataFrame(
             index=interactions_df[item_col].drop_duplicates())
         item_specific_feature = True
 
     # TODO: Extreme simplifying assumption (should be handled better):
-    # All interactions have an entry in the feature dfs
-    in_user_feats = interactions_df[user_col].isin(user_feats_d[FType.CAT].index)
-    in_item_feats = interactions_df[item_col].isin(item_feats_d[FType.CAT].index)
-    interactions_df = interactions_df.loc[in_user_feats & in_item_feats]
-    # Same assumption with numerical features
-    if FType.NUM in user_feats_d:
-        in_user_feats = interactions_df[user_col].isin(user_feats_d[FType.NUM].index)
-        interactions_df = interactions_df.loc[in_user_feats]
-    if FType.NUM in item_feats_d:
-        in_item_feats = interactions_df[item_col].isin(item_feats_d[FType.NUM].index)
-        interactions_df = interactions_df.loc[in_item_feats]
-
-    # And some more filtering
-    # Get rid of rows in our feature dataframes that don't show up in interactions
-    # (so we dont have a gazillion things in our vocab)
-    user_feats_d[FType.CAT] = user_feats_d[FType.CAT].loc[interactions_df[user_col].unique()]
-    item_feats_d[FType.CAT] = item_feats_d[FType.CAT].loc[interactions_df[item_col].unique()]
+    interactions_df, user_feats_d, item_feats_d, = simplifying_assumption(
+        interactions_df,
+        user_feats_d, item_feats_d,
+        user_col, item_col,
+    )
 
     # index alignment for numerical features
     if FType.NUM in user_feats_d:
@@ -199,13 +211,37 @@ def load_simple(
 
     # Cast categorical
     for col in user_feats_d[FType.CAT].columns:
-        user_feats_d[FType.CAT][col] = user_feats_d[FType.CAT][col].astype('category')
+        if existing_cats_d and col in existing_cats_d:
+            # todo: shouldnt we be adding the new cats?
+            existing_cats_d[col] += list(
+                set(user_feats_d[FType.CAT][col].unique()) -
+                set(existing_cats_d[col]))
+            user_feats_d[FType.CAT][col] = user_feats_d[FType.CAT][col].astype(
+                'category', categories=existing_cats_d[col])
+        else:
+            user_feats_d[FType.CAT][col] = user_feats_d[FType.CAT][col].astype('category')
     for col in item_feats_d[FType.CAT].columns:
-        item_feats_d[FType.CAT][col] = item_feats_d[FType.CAT][col].astype('category')
-    interactions_df[user_col] = interactions_df[user_col].astype(
-        'category', categories=user_feats_d[FType.CAT][user_col].cat.categories)
-    interactions_df[item_col] = interactions_df[item_col].astype(
-        'category', categories=item_feats_d[FType.CAT][item_col].cat.categories)
+        if existing_cats_d and col in existing_cats_d:
+            existing_cats_d[col] += list(
+                set(item_feats_d[FType.CAT][col].unique()) -
+                set(existing_cats_d[col]))
+            item_feats_d[FType.CAT][col] = item_feats_d[FType.CAT][col].astype(
+                'category', categories=existing_cats_d[col])
+        else:
+            item_feats_d[FType.CAT][col] = item_feats_d[FType.CAT][col].astype('category')
+
+    if user_col in user_feats_d[FType.CAT]:
+        interactions_df[user_col] = interactions_df[user_col].astype(
+            'category', categories=user_feats_d[FType.CAT][user_col].cat.categories)
+    else:
+        interactions_df[user_col] = interactions_df[user_col].astype(
+            'category')
+    if item_col in item_feats_d[FType.CAT]:
+        interactions_df[item_col] = interactions_df[item_col].astype(
+            'category', categories=item_feats_d[FType.CAT][item_col].cat.categories)
+    else:
+        interactions_df[item_col] = interactions_df[item_col].astype(
+            'category')
 
     log_shape_or_npartitions(interactions_df, 'interactions_df')
     log_shape_or_npartitions(user_feats_d[FType.CAT], 'user_feats_df')
@@ -214,12 +250,40 @@ def load_simple(
     return interactions_df, user_feats_d, item_feats_d
 
 
+def simplifying_assumption(interactions_df,
+                           user_feats_d, item_feats_d,
+                           user_col, item_col,
+                           ):
+    """ OUTOFPLACE filtering to make sure we only have known interaction users/items
+    """
+    # All interactions have an entry in the feature dfs
+    in_user_feats = interactions_df[user_col].isin(user_feats_d[FType.CAT].index)
+    in_item_feats = interactions_df[item_col].isin(item_feats_d[FType.CAT].index)
+    interactions_df = interactions_df.loc[in_user_feats & in_item_feats]
+    # Same assumption with numerical features
+    if FType.NUM in user_feats_d:
+        in_user_feats = interactions_df[user_col].isin(user_feats_d[FType.NUM].index)
+        interactions_df = interactions_df.loc[in_user_feats]
+    if FType.NUM in item_feats_d:
+        in_item_feats = interactions_df[item_col].isin(item_feats_d[FType.NUM].index)
+        interactions_df = interactions_df.loc[in_item_feats]
+
+    # And some more filtering
+    # Get rid of rows in our feature dataframes that don't show up in interactions
+    # (so we dont have a gazillion things in our vocab)
+    user_feats_d[FType.CAT] = user_feats_d[FType.CAT].loc[interactions_df[user_col].unique()]
+    item_feats_d[FType.CAT] = item_feats_d[FType.CAT].loc[interactions_df[item_col].unique()]
+
+    return interactions_df, user_feats_d, item_feats_d,
+
+
 def load_simple_warm_cats(
         interactions_src: InteractionsSource,
         users_filt, items_filt,
 ):
     """Stand-in validation data loader mostly for local testing
         * Filters out new users and items  *
+        if cold entries are to be added, add them into {user|item}_filt externally
     :param interactions_src: interactions data source
     :param users_filt : typically, existing users
         ex) `user_feats_df[user_col].cat.categories)`
@@ -235,7 +299,8 @@ def load_simple_warm_cats(
     # All interactions have an entry in the feature dfs
     in_user_feats = interactions_df[user_col].isin(users_filt)
     in_item_feats = interactions_df[item_col].isin(items_filt)
-    interactions_df = interactions_df.loc[in_user_feats & in_item_feats]
+    # interactions_df = interactions_df.loc[in_user_feats]   # todo: only filter existing users
+    interactions_df = interactions_df.loc[in_user_feats & in_item_feats].copy()
 
     interactions_df[user_col] = interactions_df[user_col].astype(
         'category', categories=users_filt)

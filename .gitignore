@@ -2,6 +2,7 @@
 notebooks/.ipynb_checkpoints/
 data/*
 !data/*.sh
+!data/test/
 .idea/
 .DS_Store
 
