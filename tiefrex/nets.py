@@ -3,6 +3,7 @@ from tensorflow.contrib.layers import fully_connected, l2_regularizer, dropout, 
 import numpy as np
 import itertools as it
 from typing import Iterable, Dict, Tuple, Union
+from collections import defaultdict
 
 
 def preset_interactions(fields_d: Dict[str, Iterable[str]],
@@ -96,6 +97,7 @@ class EmbeddingMap(object):
                  seed=322,
                  zero_init_rows: Dict[str, Iterable[int]]=None,
                  vis_specific_embs=True,
+                 feature_weights_d: Dict[str, float]=None,
                  ):
         """
         :param data_loader: Expecting tiefrex.data.TrainDataLoader
@@ -125,6 +127,11 @@ class EmbeddingMap(object):
         #     else, it should map to 0's tensor
         self.embeddings_d = {}
         self.biases_d = {}
+
+        if feature_weights_d is None:
+            self.feature_weights_d = defaultdict(lambda feat: 1.)
+        else:
+            self.feature_weights_d = feature_weights_d
 
         with tf.variable_scope('embeddings'):
             self.embeddings_d = {
@@ -176,15 +183,21 @@ class EmbeddingMap(object):
         """
         embeddings_user = lookup_wrapper(
             self.embeddings_d, input_xn_d, self.user_cat_cols,
-            'user_lookup', '{}_emb')
+            'user_lookup', name_tmp='{}_emb',
+            feature_weights_d=self.feature_weights_d,
+        )
         embeddings_item = lookup_wrapper(
             self.embeddings_d, input_xn_d, self.item_cat_cols,
-            'item_lookup', '{}_emb')
+            'item_lookup', name_tmp='{}_emb',
+            feature_weights_d=self.feature_weights_d,
+        )
         biases = lookup_wrapper(
             self.biases_d, input_xn_d, self.user_cat_cols + self.item_cat_cols,
             # # TODO: Temp: No user bias (kinda unconventional)
             # list(set(self.user_cat_cols).union(set(self.item_cat_cols)) - {'ops_user_id'}),
-            'bias_lookup', '{}_bias')
+            'bias_lookup', name_tmp='{}_bias',
+            feature_weights_d=self.feature_weights_d,
+        )
 
         return embeddings_user, embeddings_item, biases
 
@@ -192,7 +205,8 @@ class EmbeddingMap(object):
 def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
                    input_xn_d: Dict[str, tf.Tensor],
                    cols: Iterable[str],
-                   scope: str, name_tmp: str='{}'
+                   scope: str, name_tmp: str='{}',
+                   feature_weights_d: Dict[str, float]=None,
                    ) -> Dict[str, tf.Tensor]:
     """
     Embedding lookup for each categorical feature
@@ -203,6 +217,12 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
         looked_up = {feat_name: tf.nn.embedding_lookup(
             emb_d[feat_name], input_xn_d[feat_name], name=name_tmp.format(feat_name))
             for feat_name in cols}
+        if feature_weights_d is not None:
+            for feat_name, tensor in looked_up.items():
+                if feat_name in feature_weights_d:
+                    looked_up[feat_name] = tf.multiply(tensor, feature_weights_d[feat_name],
+                                                       name=f'{name_tmp.format(feat_name)}_weighted')
+
     return looked_up
 
 

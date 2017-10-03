@@ -33,7 +33,7 @@ train_interactions = InteractionsSource(
         # b'click',
         # b'visit',
     }
-    )
+)
 
 val_interactions = InteractionsSource(
     path=os.path.join(local_data_dir, 'val/profile/user-product_activity_counts'),
@@ -41,15 +41,16 @@ val_interactions = InteractionsSource(
     item_col='ops_product_id',
     activity_col='activity',
     activity_filter_set={b'purch'}
-    )
+)
 
-# user_features = [
-#     FeatureSource(
-#         path=os.path.join(local_data_dir, 'train/features/user_summary/'),
-#         feature_type=FeatureType.CATEGORICAL,
-#         index_col='ops_user_id',
-#     ),
-# ]
+user_features = [
+    FeatureSource(
+        name='user_features',
+        path=os.path.join(local_data_dir, 'train/features/user_summary/'),
+        feature_type=FType.CAT,
+        index_col='ops_user_id',
+    ),
+]
 item_features = [
     FeatureSource(
         name='dim_products',
@@ -88,8 +89,24 @@ val_item_features = [  # because features sometimes change and new items are add
     # ),
 ]
 
+val_user_features = [
+    FeatureSource(
+        name='user_features',
+        path=os.path.join(local_data_dir, 'val/features/user_summary/'),
+        feature_type=FType.CAT,
+        index_col='ops_user_id',
+    ),
+]
+
 user_specific_feature = True
-item_specific_feature = False
+item_specific_feature = True
+
+feature_weights_d = {
+    'age_bucket': 0.01,
+    'gender': 0.01,
+    'international_vs_domestic_location': 0.01,
+    'loyalty_current_level': 0.01,
+}
 
 seed = SEED
 

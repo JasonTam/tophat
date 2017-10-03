@@ -40,22 +40,24 @@ tf.gfile.MkDir(LOG_DIR)
 def run():
     train_data_loader = TrainDataLoader(config)
     validator = Validator(config, train_data_loader,
-                          limit_items=40000, n_users_eval=500,
-                          include_cold=True, cold_only=False)
+                          limit_items=-1, n_users_eval=500,
+                          include_cold=False, cold_only=False)
 
     # Ops and feature map
     logger.info('Building graph ...')
     embedding_map = EmbeddingMap(train_data_loader, embedding_dim=EMB_DIM,
                                  zero_init_rows=validator.zero_init_rows,
+                                 vis_specific_embs=False,
+                                 feature_weights_d=config.get('feature_weights_d'),
                                  )
 
-    # model = FactModel(net=BilinearNet(
-    #     embedding_map=embedding_map)
-    # )
-    model = FactModel(net=BilinearNetWithNum(
-        embedding_map=embedding_map,
-        num_meta=train_data_loader.num_meta)
+    model = FactModel(net=BilinearNet(
+        embedding_map=embedding_map)
     )
+    # model = FactModel(net=BilinearNetWithNum(
+    #     embedding_map=embedding_map,
+    #     num_meta=train_data_loader.num_meta)
+    # )
     # model = FactModel(net=BilinearNetWithNumFC(
     #     embedding_map=embedding_map,
     #     num_meta=train_data_loader.num_meta)

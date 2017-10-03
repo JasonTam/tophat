@@ -30,10 +30,10 @@ class FeatureSource(object):
         else:
             feat_df = custom_io \
                 .try_load(self.path, limit_dates=False)
-            if self.index_col:
-                feat_df.set_index(self.index_col, inplace=True)
             if hasattr(feat_df, 'compute'):  # cant `.isin` dask
                 feat_df = feat_df.compute()
+            if self.index_col:
+                feat_df.set_index(self.index_col, inplace=True)
             if self.use_cols:
                 self.data = feat_df[self.use_cols]
             elif self.use_cols == []:
