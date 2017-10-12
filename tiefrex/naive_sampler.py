@@ -22,7 +22,9 @@ def batcher(iterable: Sized, n=1):
 def feed_via_pair(input_pair_d: Dict[str, tf.Tensor],
                   user_feed_d: Dict[str, Iterable],
                   pos_item_feed_d: Dict[str, Iterable],
-                  neg_item_feed_d: Dict[str, Iterable]):
+                  neg_item_feed_d: Dict[str, Iterable],
+                  context_feed_d: Dict[str, Iterable],
+                  ):
     feed_pair_dict = {
         **{input_pair_d[f'{USER_VAR_TAG}.{feat_name}']: data_in
            for feat_name, data_in in user_feed_d.items()},
@@ -30,6 +32,8 @@ def feed_via_pair(input_pair_d: Dict[str, tf.Tensor],
            for feat_name, data_in in pos_item_feed_d.items()},
         **{input_pair_d[f'{NEG_VAR_TAG}.{feat_name}']: data_in
            for feat_name, data_in in neg_item_feed_d.items()},
+        **{input_pair_d[f'{CONTEXT_VAR_TAG}.{feat_name}']: data_in
+           for feat_name, data_in in context_feed_d.items()},
     }
     return feed_pair_dict
 
@@ -43,6 +47,8 @@ def feed_via_inds(inds_batch, cols, codes_arr, num_arr, num_key):
     :param num_key: numerical features key
     :return: 
     """
+    if codes_arr is None:
+        return {}
     d = dict(zip(cols, codes_arr[inds_batch, :].T))
     if num_arr is not None and num_key is not None:
         d[num_key] = num_arr[inds_batch, :]
@@ -81,6 +87,10 @@ class PairSampler(object):
         item_feats_codes_df = train_data_loader.item_feats_codes_df.loc[
             train_data_loader.cats_d[train_data_loader.item_col]]
 
+        # TODO: some switch for context existence
+        # context features are already aligned with `interaction_df` by construction
+        context_feat_codes_df = train_data_loader.context_feats_codes_df
+
         # Grab underlying numerical feature array(s)
         self.user_num_feats_arr = None
         self.item_num_feats_arr = None
@@ -90,6 +100,7 @@ class PairSampler(object):
         if FType.NUM in train_data_loader.item_feats_d:
             self.item_num_feats_arr = train_data_loader.item_feats_d[FType.NUM].loc[
                 train_data_loader.cats_d[train_data_loader.item_col]].values
+        # TODO: NUM not supported for context right now
 
         self.method = method
         self.get_negs = {
@@ -130,8 +141,12 @@ class PairSampler(object):
 
         self.user_feats_codes_arr = user_feats_codes_df.values
         self.item_feats_codes_arr = item_feats_codes_df.values
+        self.context_feats_codes_arr = context_feat_codes_df.values \
+            if context_feat_codes_df is not None else None
         self.user_cols = user_feats_codes_df.columns
         self.item_cols = item_feats_codes_df.columns
+        self.context_cols = context_feat_codes_df.columns \
+            if context_feat_codes_df is not None else []
 
         # Some more crap for the more complex strats
         if self.method == 'adaptive':
@@ -219,6 +234,14 @@ class PairSampler(object):
                              num_key='item_num_feats',
                              )
 
+    def context_feed_via_inds(self, inds_batch):
+        return feed_via_inds(inds_batch,
+                             self.context_cols,
+                             self.context_feats_codes_arr,
+                             num_arr=None,
+                             num_key=None,
+                             )
+
     def iter_by_xn(self):
         # The feed dict generator itself
         # Note: can implement __next__ as well if we want book-keeping state info to be kept
@@ -237,8 +260,14 @@ class PairSampler(object):
                 pos_item_feed_d = self.item_feed_via_inds(pos_item_inds_batch)
                 neg_item_feed_d = self.item_feed_via_inds(neg_item_inds_batch)
 
+                context_feed_d = self.context_feed_via_inds(inds_batch)
+
                 feed_pair_dict = feed_via_pair(
-                    self.input_pair_d, user_feed_d, pos_item_feed_d, neg_item_feed_d)
+                    self.input_pair_d,
+                    user_feed_d,
+                    pos_item_feed_d, neg_item_feed_d,
+                    context_feed_d
+                )
                 yield feed_pair_dict
 
     def iter_by_user(self):

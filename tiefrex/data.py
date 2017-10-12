@@ -1,11 +1,11 @@
 import pandas as pd
-import numpy as np
-import tensorflow as tf
+import os
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
 from typing import Optional, Iterable, Tuple, Dict, List, Any
 from collections import defaultdict
 from tiefrex.constants import FType
+from tiefrex.pp_utils import append_dt_extracts
 
 
 class FeatureSource(object):
@@ -51,12 +51,14 @@ class InteractionsSource(object):
                  item_col: str,
                  activity_col: Optional[str]=None,
                  activity_filter_set: Optional[set]=None,
+                 assign_dates: bool=True,
                  ):
         self.path = path
         self.user_col = user_col
         self.item_col = item_col
         self.activity_col = activity_col
         self.activity_filter_set = activity_filter_set
+        self.assign_dates = assign_dates
 
         self.data = None
 
@@ -64,7 +66,15 @@ class InteractionsSource(object):
         if self.data is not None:
             logger.info('Already loaded')
         else:
-            interactions_df = custom_io.try_load(self.path)
+            if os.path.splitext(self.path)[-1]:
+                # single part given -- can't selectively read paths by partition
+                interactions_df = custom_io.try_load(self.path, limit_dates=False)
+            else:
+                interactions_df = custom_io.try_load(self.path,
+                                                     limit_dates=True,
+                                                     days_lookback=9999,
+                                                     assign_dates=self.assign_dates,
+                )
             if 'value' in interactions_df.columns \
                     and self.item_col not in interactions_df.columns:
                 interactions_df = interactions_df.rename(columns={'value': self.item_col})
@@ -87,6 +97,7 @@ class TrainDataLoader(object):
 
         self.user_feats_codes_df = None
         self.item_feats_codes_df = None
+        self.context_feats_codes_df = None
         self.user_num_feats_df = None
         self.item_num_feats_df = None
         self.num_meta = None
@@ -115,6 +126,12 @@ class TrainDataLoader(object):
         if self.item_col not in self.cats_d:
             self.cats_d[self.item_col] = self.interactions_df[self.item_col].cat.categories.tolist()
 
+        self.context_cat_cols = config.get('context_cols') or []
+        if self.context_cat_cols:
+            append_dt_extracts(self.interactions_df, self.context_cat_cols)
+            for col in self.context_cat_cols:
+                self.cats_d[col] = self.interactions_df[col].cat.categories.tolist()
+
         self.make_feat_codes()
         self.process_num()
 
@@ -129,6 +146,11 @@ class TrainDataLoader(object):
         self.item_feats_codes_df = self.item_feats_d[FType.CAT].copy()
         for col in self.item_feats_codes_df.columns:
             self.item_feats_codes_df[col] = self.item_feats_codes_df[col].cat.codes
+
+        if self.context_cat_cols:
+            self.context_feats_codes_df = self.interactions_df[self.context_cat_cols].copy()
+            for col in self.context_feats_codes_df.columns:
+                self.context_feats_codes_df[col] = self.context_feats_codes_df[col].cat.codes
 
     def process_num(self):
         # Process numerical metadata

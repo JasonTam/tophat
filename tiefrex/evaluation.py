@@ -5,6 +5,7 @@ from lib_cerebro_py.log import logger
 from tiefrex.data import load_simple_warm_cats, load_simple, TrainDataLoader
 from tiefrex.core import fwd_dict_via_ftypemeta
 from tiefrex.constants import FType
+from tiefrex.pp_utils import append_dt_extracts
 from copy import deepcopy
 from tqdm import tqdm
 from collections import defaultdict
@@ -14,6 +15,9 @@ def items_pred_dicter(user_id, item_ids,
                       user_cat_codes_df, item_cat_codes_df,
                       user_num_feats_df, item_num_feats_df,
                       input_fwd_d,
+                      context_ind=None,
+                      context_cat_codes_df=None,
+                      # context_num_feats=None,
                       ):
     # todo: a little redundancy with the dicters in tiefrex.core
     """
@@ -21,11 +25,17 @@ def items_pred_dicter(user_id, item_ids,
     Note: This does not batch within the list of items passed in
         thus, it could be a problem with huge number of items
 
+    :param user_id: the particular user we are predicting for
+    :param context_ind: the particular context we are predicting under
     """
     n_items = len(item_ids)
 
     user_feed_d = user_cat_codes_df.loc[[user_id]].to_dict(orient='list')
     item_feed_d = item_cat_codes_df.loc[item_ids].to_dict(orient='list')
+
+    # TODO: care with loc since it's a subset -- maybe just stick to iloc
+    context_feed_d = context_cat_codes_df.iloc[[context_ind]].to_dict(orient='list')\
+        if context_cat_codes_df is not None else {}
 
     # Add numerical feature if present
     if user_num_feats_df is not None:
@@ -40,6 +50,8 @@ def items_pred_dicter(user_id, item_ids,
            for feat_name, data_in in user_feed_d.items()},
         **{input_fwd_d[f'{feat_name}']: data_in
            for feat_name, data_in in item_feed_d.items()},
+        **{input_fwd_d[f'{feat_name}']: data_in * n_items
+           for feat_name, data_in in context_feed_d.items()},
     }
     return feed_fwd_dict
 
@@ -55,7 +67,37 @@ def items_pred_dicter_gen(user_ids, item_ids,
         yield user_id, items_pred_dicter(user_id, item_ids,
                                          user_cat_codes_df, item_cat_codes_df,
                                          user_num_feats_df, item_num_feats_df,
-                                         input_fwd_d)
+                                         input_fwd_d,
+                                         context_ind=None,
+                                         context_cat_codes_df=None,
+                                         # context_num_feats=context_num_feats,
+                                         )
+
+
+def items_pred_dicter_gen_context(
+        interaction_df, item_ids,
+        user_cat_codes_df, item_cat_codes_df,
+        user_num_feats_df, item_num_feats_df,
+        input_fwd_d,
+        context_inds,
+        context_cat_codes_df,
+):
+    """Generates feeds for forward prediction for many users-contexts
+    each batch will be all items for a single user-context
+    """
+    def get_user_id(context_ind):
+        return interaction_df['ops_user_id'].iloc[context_ind]
+
+    for context_ind in context_inds:
+        user_id = get_user_id(context_ind)
+        yield context_ind, items_pred_dicter(
+            user_id, item_ids,
+            user_cat_codes_df, item_cat_codes_df,
+            user_num_feats_df, item_num_feats_df,
+            input_fwd_d,
+            context_ind=context_ind,
+            context_cat_codes_df=context_cat_codes_df,
+        )
 
 
 def make_metrics_ops(fwd_op, input_fwd_d):
@@ -115,7 +157,9 @@ def eval_things(sess,
                 metric_ops_d, reset_metrics_op, eval_ph_d,
                 n_users_eval=-1,
                 summary_writer=None, step=None,
-                model=None  # todo
+                model=None,  # todo
+                inds=None,
+                context_cat_codes_df=None,
                 ):
     """
     :param sess: tensorflow session
@@ -195,6 +239,83 @@ def eval_things(sess,
     return macro_metrics
 
 
+def eval_things_context(
+        sess,
+        interactions_df,
+        user_col, item_col,
+        user_ids_val, item_ids,
+        user_cat_codes_df, item_cat_codes_df,
+        user_num_feats_df, item_num_feats_df,
+        input_fwd_d,
+        metric_ops_d, reset_metrics_op, eval_ph_d,
+        n_xn_eval=-1,
+        summary_writer=None, step=None,
+        model=None,  # todo
+        context_inds=None,
+        context_cat_codes_df=None,
+        ):
+    # TODO: SEE ABOVE.... THIS IS JUST A COPY PASTA + TEMP MODS
+
+    sess.run(tf.local_variables_initializer())
+    sess.run(reset_metrics_op)
+    # use the same interactions for every eval step
+    pred_feeder_gen = items_pred_dicter_gen_context(
+        interactions_df, item_ids,
+        user_cat_codes_df, item_cat_codes_df,
+        user_num_feats_df, item_num_feats_df,
+        input_fwd_d,
+        context_inds=context_inds,
+        context_cat_codes_df=context_cat_codes_df,
+    )
+    if n_xn_eval < 0:
+        n_xn_eval = len(context_inds)
+    else:
+        n_xn_eval = min(n_xn_eval, len(context_inds))
+
+    macro_metrics = defaultdict(lambda: [])
+    for ii in tqdm(range(n_xn_eval)):
+        try:
+            context_ind, cur_xn_fwd_dict = next(pred_feeder_gen)
+        except StopIteration:
+            break
+        # y_true = interactions_df.loc[interactions_df[user_col]
+        #                              == user_id][item_col].cat.codes.values
+        y_true = interactions_df.iloc[[context_ind]]['item_reenc'].cat.codes.values
+
+        y_true_bool = np.zeros(len(item_ids), dtype=bool)
+        y_true_bool[y_true] = True
+        sess.run([tup[1] for tup in metric_ops_d.values()], feed_dict={
+            **cur_xn_fwd_dict,
+            **{eval_ph_d['y_true_ph']: y_true[None, :],
+               eval_ph_d['y_true_bool_ph']: y_true_bool[None, :],
+               }})
+        for m, m_tup in metric_ops_d.items():
+            macro_metrics[m].append(sess.run(m_tup[0]))
+        sess.run(reset_metrics_op)
+
+    # # NOTE: This is for micro aggregation (also remove the reset above)
+    # for m, m_tup in metric_ops_d.items():
+    #     metric_score = sess.run(m_tup[0])
+    #     metric_val_summary = tf.Summary(value=[
+    #         tf.Summary.Value(tag=f'{m}_val',
+    #                          simple_value=metric_score)])
+    #     logger.info(f'(val){m} = {metric_score}')
+    #     if summary_writer is not None:
+    #         summary_writer.add_summary(metric_val_summary, step)
+
+    for m, vals in macro_metrics.items():
+        metric_score = np.mean(vals)
+        metric_score_std = np.std(vals)
+        metric_val_summary = tf.Summary(value=[
+            tf.Summary.Value(tag=f'{m}_val',
+                             simple_value=metric_score)])
+        logger.info(f'(val){m} = {metric_score} +/- {metric_score_std}')
+        if summary_writer is not None:
+            summary_writer.add_summary(metric_val_summary, step)
+
+    return macro_metrics
+
+
 class Validator(object):
     def __init__(self, config, train_data_loader: TrainDataLoader,
                  limit_items=-1, n_users_eval=200,
@@ -220,9 +341,11 @@ class Validator(object):
         self.item_col_val = interactions_val.item_col
         self.n_users_eval = n_users_eval
 
+        self.input_fwd_d = None
+
         train_item_counts = train_data_loader.interactions_df.groupby(train_data_loader.item_col).size()
         warm_items = set(train_item_counts.loc[train_item_counts >= n_xns_as_cold].index)
-        
+
         if include_cold:
             self.cats_d = train_data_loader.cats_d  # .copy() without copy, both objs will be mutated
             self.cats_d_orig = deepcopy(self.cats_d)  # to compare against later
@@ -238,6 +361,10 @@ class Validator(object):
                 self.interactions_df = self.interactions_df.loc[
                     ~self.interactions_df[self.item_col_val].isin(warm_items)]
 
+            append_dt_extracts(self.interactions_df, train_data_loader.context_cat_cols,
+                               self.cats_d)
+
+            # TODO: same as TrainDataLoader.make_feat_codes()
             # Convert all categorical cols to corresponding codes
             self.user_cat_codes_df = self.user_feats_d[FType.CAT].copy()
             for col in self.user_cat_codes_df.columns:
@@ -245,6 +372,11 @@ class Validator(object):
             self.item_cat_codes_df = self.item_feats_d[FType.CAT].copy()
             for col in self.item_cat_codes_df.columns:
                 self.item_cat_codes_df[col] = self.item_cat_codes_df[col].cat.codes
+
+            self.context_cat_codes_df = self.interactions_df[train_data_loader.context_cat_cols].copy()
+            for col in self.context_cat_codes_df.columns:
+                self.context_cat_codes_df[col] = self.context_cat_codes_df[col].cat.codes
+
 
             # Process numerical metadata
             # TODO: assuming numerical features aggregated into 1 table for now
@@ -295,6 +427,7 @@ class Validator(object):
             ##
             self.user_cat_codes_df = train_data_loader.user_feats_codes_df
             self.item_cat_codes_df = train_data_loader.item_feats_codes_df
+            self.context_cat_codes_df = train_data_loader.context_feats_codes_df
             self.user_num_feats_df = train_data_loader.user_num_feats_df
             self.item_num_feats_df = train_data_loader.item_num_feats_df
             self.num_meta = train_data_loader.num_meta
@@ -360,3 +493,27 @@ class Validator(object):
             summary_writer=summary_writer, step=step,
             model=self.model,  # todo: temp
         )
+
+    def run_val_context(self, sess, summary_writer, step):
+        """ On a per-context level instead of per-user
+            Each evaluation instance will likely only have a single positive
+            (We assume a user to likely to make purchases in different contexts
+            )
+        """
+        return eval_things_context(
+            sess,
+            self.interactions_df,
+            self.user_col_val, self.item_col_val,
+            self.user_ids_val, self.item_ids,
+            self.user_cat_codes_df, self.item_cat_codes_df,
+            self.user_num_feats_df, self.item_num_feats_df,
+            self.input_fwd_d,
+            self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d,
+            n_xn_eval=self.n_users_eval,
+            summary_writer=summary_writer, step=step,
+            model=self.model,  # todo: temp
+
+            context_inds=np.arange(len(self.interactions_df)),
+            context_cat_codes_df=self.context_cat_codes_df,
+        )
+

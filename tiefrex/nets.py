@@ -15,7 +15,9 @@ def preset_interactions(fields_d: Dict[str, Iterable[str]],
     :param fields_d: dictionary of group_name to iterable of feat_names that belong to that group
         ex) `fields_d = {'user': {'gender', 'age'}, 'item': {'brand', 'pcat', 'price'}}`
     :param interaction_type: preset type
-    :param max_order: max order of interactions  
+    :param max_order: max order of interactions
+        if `interaction_type` is `inter`, `max_order` should
+        not be larger than 3
     :return: Iterable of interaction sets
     """
     if interaction_type == 'intra':  # includes intra field
@@ -24,7 +26,13 @@ def preset_interactions(fields_d: Dict[str, Iterable[str]],
                 it.chain(*fields_d.values()), order)
                 for order in range(2, max_order + 1)))
     elif interaction_type == 'inter':  # only inter field
-        feature_pairs = it.product(*fields_d.values())
+        # feature_pairs = it.product(*fields_d.values())
+        feature_pairs = it.chain(
+            *(it.product(*fields)
+              for fields in it.chain(
+                *(it.combinations(fields_d.values(), o)
+                  for o in range(2, max_order + 1)))
+              ))
     else:
         raise ValueError
 
@@ -33,6 +41,8 @@ def preset_interactions(fields_d: Dict[str, Iterable[str]],
 
 def muls_via_xn_sets(interaction_sets: Iterable[frozenset],
                      emb_d: Dict[str, tf.Tensor]) -> Dict[frozenset, tf.Tensor]:
+    """ Returns the element-wise product of embeddings (with node-reuse)
+    """
 
     interaction_sets = list(interaction_sets)
     # Populate xn nodes with single terms (order 1)
@@ -54,6 +64,9 @@ def muls_via_xn_sets(interaction_sets: Iterable[frozenset],
 
 
 def kernel_via_xn_muls(xn_nodes: Dict[frozenset, tf.Tensor]) -> tf.Tensor:
+    """ Reduce nodes (typically element-wise sums) with addition
+        (effectively yields dot product)
+    """
     if len(xn_nodes):
         # Reduce nodes of order > 1
         contrib_dot = tf.add_n([
@@ -115,6 +128,7 @@ class EmbeddingMap(object):
         self.cats_d = data_loader.cats_d
         self.user_cat_cols = data_loader.user_cat_cols
         self.item_cat_cols = data_loader.item_cat_cols
+        self.context_cat_cols = data_loader.context_cat_cols
 
         self.l2_bias = l2_bias
         self.l2_emb = l2_emb
@@ -176,7 +190,13 @@ class EmbeddingMap(object):
                 )
 
     def look_up(self, input_xn_d
-                ) -> Tuple[Dict[str, tf.Tensor], Dict[str, tf.Tensor], Dict[str, tf.Tensor]]:
+                ) -> Tuple[
+        Dict[str, tf.Tensor],  # user
+        Dict[str, tf.Tensor],  # item
+        Dict[str, tf.Tensor],  # context
+        Dict[str, tf.Tensor],  # biases (no hierarchy)
+        # TODO: maybe better to have Dict[{user,item,context}-->Dict[featname, emb]] etc
+    ]:
         """
         :param input_xn_d: dictionary of feature names to category codes
             for a single interaction
@@ -191,15 +211,20 @@ class EmbeddingMap(object):
             'item_lookup', name_tmp='{}_emb',
             feature_weights_d=self.feature_weights_d,
         )
+        embeddings_context = lookup_wrapper(
+            self.embeddings_d, input_xn_d, self.context_cat_cols,
+            'context_lookup', name_tmp='{}_emb',
+            feature_weights_d=self.feature_weights_d,
+        )
         biases = lookup_wrapper(
-            self.biases_d, input_xn_d, self.user_cat_cols + self.item_cat_cols,
+            self.biases_d, input_xn_d, self.user_cat_cols + self.item_cat_cols + self.context_cat_cols,
             # # TODO: Temp: No user bias (kinda unconventional)
             # list(set(self.user_cat_cols).union(set(self.item_cat_cols)) - {'ops_user_id'}),
             'bias_lookup', name_tmp='{}_bias',
             feature_weights_d=self.feature_weights_d,
         )
 
-        return embeddings_user, embeddings_item, biases
+        return embeddings_user, embeddings_item, embeddings_context, biases
 
 
 def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
@@ -213,6 +238,8 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
     Can be stacked downstream to yield a tensor
         ie) `tf.stack(list(looked_up.values()), axis=-1)`
     """
+    if not cols:
+        return {}
     with tf.name_scope(scope):
         looked_up = {feat_name: tf.nn.embedding_lookup(
             emb_d[feat_name], input_xn_d[feat_name], name=name_tmp.format(feat_name))
@@ -229,8 +256,10 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
 class BilinearNet(object):
     def __init__(self,
                  embedding_map: EmbeddingMap,
+                 interaction_type='inter',
                  ):
         self.embedding_map = embedding_map
+        self.interaction_type = interaction_type
 
     def forward(self, input_xn_d: Dict[str, tf.Tensor]) -> tf.Tensor:
         """
@@ -240,18 +269,19 @@ class BilinearNet(object):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, biases = self.embedding_map.look_up(
+        embeddings_user, embeddings_item, embeddings_context, biases = self.embedding_map.look_up(
             input_xn_d)
 
-        embs_all = {**embeddings_user, **embeddings_item}
+        embs_all = {**embeddings_user, **embeddings_item, **embeddings_context}
 
         fields_d = {
             'user': self.embedding_map.user_cat_cols,
             'item': self.embedding_map.item_cat_cols,
+            'context': self.embedding_map.context_cat_cols,
         }
 
         interaction_sets = preset_interactions(
-            fields_d, interaction_type='inter')
+            fields_d, interaction_type=self.interaction_type)
 
         with tf.name_scope('interaction_model'):
             contrib_dot = kernel_via_xn_sets(interaction_sets, embs_all)
@@ -269,9 +299,11 @@ class BilinearNetWithNum(object):
                  num_meta: Dict[str, int]=None,
                  l2_vis: float=0.,
                  ruin=True,  # use ruining's formulation or our own
+                 interaction_type='inter',
                  ):
         self.ruin = ruin
         self.embedding_map = embedding_map
+        self.interaction_type = interaction_type
         self.num_meta = num_meta or {}
         # Params for numerical features
         # embedding matrix (for each numerical feature) -- fully connected layer
@@ -318,7 +350,7 @@ class BilinearNetWithNum(object):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, biases = self.embedding_map.look_up(
+        embeddings_user, embeddings_item, embeddings_context, biases = self.embedding_map.look_up(
             input_xn_d)
         if self.embedding_map.vis_specific_embs:
             emb_user_vis = tf.nn.embedding_lookup(
@@ -351,7 +383,7 @@ class BilinearNetWithNum(object):
 
         embeddings_item.update(num_emb_d)  # TODO: temp assume num are item features (not vbpr)
 
-        embs_all = {**embeddings_user, **embeddings_item}
+        embs_all = {**embeddings_user, **embeddings_item, **embeddings_context}
 
         fields_d = {
             'user': self.embedding_map.user_cat_cols + user_num_cols,
@@ -359,7 +391,7 @@ class BilinearNetWithNum(object):
         }
 
         interaction_sets = preset_interactions(
-            fields_d, interaction_type='inter')
+            fields_d, interaction_type=self.interaction_type)
 
         with tf.name_scope('interaction_model'):
             contrib_dot = kernel_via_xn_sets(interaction_sets, embs_all)
@@ -403,6 +435,7 @@ class BilinearNetWithNumFC(object):
                  embedding_map: EmbeddingMap,
                  num_meta: Dict[str, int]=None,
                  l2=1e0,
+                 interaction_type='inter',
                  ):
         """
         POC in replacing the inner product potion with FC layers
@@ -416,6 +449,7 @@ class BilinearNetWithNumFC(object):
             In Proceedings of SIGIR '17, Shinjuku, Tokyo, Japan, August 07-11, 2017.
         """
         self.embedding_map = embedding_map
+        self.interaction_type = interaction_type
         self.num_meta = num_meta or {}
         self.regularizer = l2_regularizer(l2)
 
@@ -427,7 +461,7 @@ class BilinearNetWithNumFC(object):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, biases = self.embedding_map.look_up(
+        embeddings_user, embeddings_item, embeddings_context, biases = self.embedding_map.look_up(
             input_xn_d)
         # bias not used
 
@@ -435,7 +469,7 @@ class BilinearNetWithNumFC(object):
             feat_name: input_xn_d[feat_name] for feat_name in self.num_meta.keys()
         }
 
-        embs_all = {**embeddings_user, **embeddings_item, **num_emb_d}
+        embs_all = {**embeddings_user, **embeddings_item, **embeddings_context, **num_emb_d}
 
         fields_d = {
             'user': self.embedding_map.user_cat_cols,
@@ -443,7 +477,7 @@ class BilinearNetWithNumFC(object):
         }
 
         interaction_sets = preset_interactions(
-            fields_d, interaction_type='inter')
+            fields_d, interaction_type=self.interaction_type)
 
         with tf.name_scope('interaction_model'):
             V = muls_via_xn_sets(interaction_sets, embs_all)

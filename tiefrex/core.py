@@ -64,14 +64,20 @@ class FactModel(object):
 
     def get_pair_dict(self, batch_size):
         return pair_dict_via_ftypemeta(
-            {FType.CAT: self.net.embedding_map.user_cat_cols,
-             FType.NUM: [],
-             },
-            {FType.CAT: self.net.embedding_map.item_cat_cols,
-             # TODO: assume for now that all num feats are item-related (else, need extra book-keeping)
-             FType.NUM: list(self.net.num_meta.items()) if hasattr(self.net, 'num_meta') else [],
-             },
-            batch_size)
+            user_ftypemeta={
+                FType.CAT: self.net.embedding_map.user_cat_cols,
+                # FType.NUM: [],
+            },
+            item_ftypemeta={
+                FType.CAT: self.net.embedding_map.item_cat_cols,
+                # TODO: assume for now that all num feats are item-related (else, need extra book-keeping)
+                FType.NUM: list(self.net.num_meta.items()) if hasattr(self.net, 'num_meta') else [],
+            },
+            context_ftypemeta={
+                FType.CAT: self.net.embedding_map.context_cat_cols,
+                # FType.NUM: [],
+            },
+            batch_size=batch_size)
 
     def get_loss(self) -> tf.Tensor:
         """
@@ -85,10 +91,14 @@ class FactModel(object):
             # Split up input into pos & neg interaction
             pos_input_d = {k.split(TAG_DELIM, 1)[-1]: v for k, v in self.input_pair_d.items()
                            if k.startswith(USER_VAR_TAG + TAG_DELIM)
-                           or k.startswith(POS_VAR_TAG + TAG_DELIM)}
+                           or k.startswith(POS_VAR_TAG + TAG_DELIM)
+                           or k.startswith(CONTEXT_VAR_TAG + TAG_DELIM)
+                           }
             neg_input_d = {k.split(TAG_DELIM, 1)[-1]: v for k, v in self.input_pair_d.items()
                            if k.startswith(USER_VAR_TAG + TAG_DELIM)
-                           or k.startswith(NEG_VAR_TAG + TAG_DELIM)}
+                           or k.startswith(NEG_VAR_TAG + TAG_DELIM)
+                           or k.startswith(CONTEXT_VAR_TAG + TAG_DELIM)
+                           }
 
             with tf.name_scope('positive'):
                 pos_score = tf.identity(self.forward(

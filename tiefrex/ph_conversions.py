@@ -48,6 +48,9 @@ def ph_dict_via_feats(feat_names: List[str], batch_size: int, dtype,
                       ) -> Dict[str, tf.Tensor]:
     """ Creates a dictionary of placeholders keyed by feature name 
     """
+    if not feat_names:
+        return {}
+
     if input_size > 1:
         ph_shape = [batch_size, input_size]
     else:
@@ -83,11 +86,13 @@ def ph_via_ftypemeta(ftypemeta: FtypeMeta,
 def pair_dict_via_ftypemeta(
         user_ftypemeta: FtypeMeta,
         item_ftypemeta: FtypeMeta,
+        context_ftypemeta: FtypeMeta,
         batch_size: int) -> Dict[str, tf.Tensor]:
     input_pair_d = {
         **ph_via_ftypemeta(user_ftypemeta, batch_size, tag=USER_VAR_TAG),
         **ph_via_ftypemeta(item_ftypemeta, batch_size, tag=POS_VAR_TAG),
         **ph_via_ftypemeta(item_ftypemeta, batch_size, tag=NEG_VAR_TAG),
+        **ph_via_ftypemeta(context_ftypemeta, batch_size, tag=CONTEXT_VAR_TAG),
     }
     return input_pair_d
 
