@@ -1,104 +1,9 @@
 import tensorflow as tf
 from tensorflow.contrib.layers import fully_connected, l2_regularizer, dropout, batch_norm
 import numpy as np
-import itertools as it
-from typing import Iterable, Dict, Tuple, Union
+from tiefrex.utils_xn import preset_interactions, kernel_via_xn_sets, muls_via_xn_sets
+from typing import Iterable, Dict, Tuple
 from collections import defaultdict
-
-
-def preset_interactions(fields_d: Dict[str, Iterable[str]],
-                        interaction_type: str='inter',
-                        max_order: int=2
-                        ) -> Iterable[frozenset]:
-    """
-    Convenience feature interaction planner for common interaction types
-    :param fields_d: dictionary of group_name to iterable of feat_names that belong to that group
-        ex) `fields_d = {'user': {'gender', 'age'}, 'item': {'brand', 'pcat', 'price'}}`
-    :param interaction_type: preset type
-    :param max_order: max order of interactions
-        if `interaction_type` is `inter`, `max_order` should
-        not be larger than 3
-    :return: Iterable of interaction sets
-    """
-    if interaction_type == 'intra':  # includes intra field
-        feature_pairs = it.chain(
-            *(it.combinations(
-                it.chain(*fields_d.values()), order)
-                for order in range(2, max_order + 1)))
-    elif interaction_type == 'inter':  # only inter field
-        # feature_pairs = it.product(*fields_d.values())
-        feature_pairs = it.chain(
-            *(it.product(*fields)
-              for fields in it.chain(
-                *(it.combinations(fields_d.values(), o)
-                  for o in range(2, max_order + 1)))
-              ))
-    else:
-        raise ValueError
-
-    return map(frozenset, feature_pairs)
-
-
-def muls_via_xn_sets(interaction_sets: Iterable[frozenset],
-                     emb_d: Dict[str, tf.Tensor]) -> Dict[frozenset, tf.Tensor]:
-    """ Returns the element-wise product of embeddings (with node-reuse)
-    """
-
-    interaction_sets = list(interaction_sets)
-    # Populate xn nodes with single terms (order 1)
-    xn_nodes: Dict[frozenset, tf.Tensor] = {
-        frozenset({k}): v for k, v in emb_d.items()}
-    unq_orders = set(map(len, interaction_sets))
-    if unq_orders:
-        for order in range(min(unq_orders), max(unq_orders) + 1):
-            with tf.name_scope(f'xn_order_{order}'):
-                for xn in interaction_sets:
-                    if len(xn) == order:
-                        xn_l = list(xn)
-                        xn_nodes[xn] = tf.multiply(
-                            xn_nodes[frozenset(xn_l[:-1])],  # cached portion (if ho)
-                            xn_nodes[frozenset({xn_l[-1]})],  # last as new term
-                            name='X'.join(xn)
-                        )
-    return xn_nodes
-
-
-def kernel_via_xn_muls(xn_nodes: Dict[frozenset, tf.Tensor]) -> tf.Tensor:
-    """ Reduce nodes (typically element-wise sums) with addition
-        (effectively yields dot product)
-    """
-    if len(xn_nodes):
-        # Reduce nodes of order > 1
-        contrib_dot = tf.add_n([
-            tf.reduce_sum(node, 1, keep_dims=False)
-            for s, node in xn_nodes.items() if len(s) > 1
-        ], name='contrib_dot')
-    else:
-        contrib_dot = tf.zeros(None, name='contrib_dot')
-    return contrib_dot
-
-
-def kernel_via_xn_sets(interaction_sets: Iterable[frozenset],
-                       emb_d: Dict[str, tf.Tensor]) -> tf.Tensor:
-    """
-    Computes arbitrary order interaction terms
-    Reuses lower order terms
-    
-    Differs from typical HOFM as we will reuse lower order embeddings
-        (not actually sure if this is OK in terms of expressiveness)
-        In theory, we're supposed to use a new param matrix for each order
-            Much like how we use a bias param for order=1
-    :param interaction_sets: interactions to create nodes for
-    :param emb_d: dictionary of embedding tensors
-        NOTE: would include an additional `order` key to match HOFM literature
-    :return: 
-    
-    References:
-        Blondel, Mathieu, et al. "Higher-Order Factorization Machines." 
-            Advances in Neural Information Processing Systems. 2016.
-    """
-    # TODO: for now we assume that all dependencies of previous order are met
-    return kernel_via_xn_muls(muls_via_xn_sets(interaction_sets, emb_d))
 
 
 class EmbeddingMap(object):
@@ -153,14 +58,16 @@ class EmbeddingMap(object):
                     name=f'{feat_name}_embs',
                     shape=[len(cats), embedding_dim],
                     initializer=tf.random_normal_initializer(
-                        mean=0., stddev=1. / self.embedding_dim, seed=self.seed),
+                        mean=0., stddev=1. / self.embedding_dim,
+                        seed=self.seed),
                     regularizer=self.reg_emb
                 )
                 for feat_name, cats in self.cats_d.items()
             }
         if zero_init_rows is not None:
             for k, v in zero_init_rows.items():
-                z = np.ones([len(self.cats_d[k]), embedding_dim], dtype=np.float32)
+                z = np.ones([len(self.cats_d[k]), embedding_dim],
+                            dtype=np.float32)
                 z[v] = False
                 self.embeddings_d[k] *= tf.constant(z)
 
@@ -242,13 +149,15 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
         return {}
     with tf.name_scope(scope):
         looked_up = {feat_name: tf.nn.embedding_lookup(
-            emb_d[feat_name], input_xn_d[feat_name], name=name_tmp.format(feat_name))
+            emb_d[feat_name], input_xn_d[feat_name],
+            name=name_tmp.format(feat_name))
             for feat_name in cols}
         if feature_weights_d is not None:
             for feat_name, tensor in looked_up.items():
                 if feat_name in feature_weights_d:
-                    looked_up[feat_name] = tf.multiply(tensor, feature_weights_d[feat_name],
-                                                       name=f'{name_tmp.format(feat_name)}_weighted')
+                    looked_up[feat_name] = tf.multiply(
+                        tensor, feature_weights_d[feat_name],
+                        name=f'{name_tmp.format(feat_name)}_weighted')
 
     return looked_up
 
@@ -269,10 +178,12 @@ class BilinearNet(object):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, embeddings_context, biases = self.embedding_map.look_up(
-            input_xn_d)
+        embeddings_user, embeddings_item, embeddings_context, biases = \
+            self.embedding_map.look_up(input_xn_d)
 
-        embs_all = {**embeddings_user, **embeddings_item, **embeddings_context}
+        embs_all = {**embeddings_user,
+                    **embeddings_item,
+                    **embeddings_context}
 
         fields_d = {
             'user': self.embedding_map.user_cat_cols,
@@ -350,7 +261,8 @@ class BilinearNetWithNum(object):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, embeddings_context, biases = self.embedding_map.look_up(
+        embeddings_user, embeddings_item, embeddings_context, biases = \
+            self.embedding_map.look_up(
             input_xn_d)
         if self.embedding_map.vis_specific_embs:
             emb_user_vis = tf.nn.embedding_lookup(
@@ -383,7 +295,9 @@ class BilinearNetWithNum(object):
 
         embeddings_item.update(num_emb_d)  # TODO: temp assume num are item features (not vbpr)
 
-        embs_all = {**embeddings_user, **embeddings_item, **embeddings_context}
+        embs_all = {**embeddings_user,
+                    **embeddings_item,
+                    **embeddings_context}
 
         fields_d = {
             'user': self.embedding_map.user_cat_cols + user_num_cols,
@@ -469,7 +383,10 @@ class BilinearNetWithNumFC(object):
             feat_name: input_xn_d[feat_name] for feat_name in self.num_meta.keys()
         }
 
-        embs_all = {**embeddings_user, **embeddings_item, **embeddings_context, **num_emb_d}
+        embs_all = {**embeddings_user,
+                    **embeddings_item,
+                    **embeddings_context,
+                    **num_emb_d}
 
         fields_d = {
             'user': self.embedding_map.user_cat_cols,
@@ -481,7 +398,8 @@ class BilinearNetWithNumFC(object):
 
         with tf.name_scope('interaction_model'):
             V = muls_via_xn_sets(interaction_sets, embs_all)
-            f_bi = tf.add_n([node for s, node in V.items() if len(s) > 1], name='f_bi')
+            f_bi = tf.add_n([node for s, node in V.items() if len(s) > 1],
+                            name='f_bi')
 
         with tf.name_scope('deep'):
             # x = tf.concat([embs_all[k] for k in sorted(embs_all)], axis=1)
@@ -490,10 +408,12 @@ class BilinearNetWithNumFC(object):
             bn0 = batch_norm(x, decay=0.9)
             drop0 = dropout(bn0, 0.5)
 
-            fc1 = fully_connected(drop0, 8, activation_fn=tf.nn.relu, weights_regularizer=self.regularizer)
+            fc1 = fully_connected(drop0, 8, activation_fn=tf.nn.relu,
+                                  weights_regularizer=self.regularizer)
             bn1 = batch_norm(fc1, decay=0.9)
             drop1 = dropout(bn1, 0.8)
-            fc2 = fully_connected(drop1, 4, activation_fn=tf.nn.relu, weights_regularizer=self.regularizer)
+            fc2 = fully_connected(drop1, 4, activation_fn=tf.nn.relu,
+                                  weights_regularizer=self.regularizer)
             bn2 = batch_norm(fc2, decay=0.9)
             drop2 = dropout(bn2, 0.8)
             contrib_f = tf.squeeze(

@@ -5,7 +5,7 @@ from lib_cerebro_py.log import logger
 from tiefrex.data import load_simple_warm_cats, load_simple, TrainDataLoader
 from tiefrex.core import fwd_dict_via_ftypemeta
 from tiefrex.constants import FType
-from tiefrex.pp_utils import append_dt_extracts
+from tiefrex.utils_pp import append_dt_extracts
 from copy import deepcopy
 from tqdm import tqdm
 from collections import defaultdict
@@ -116,7 +116,7 @@ def make_metrics_ops(fwd_op, input_fwd_d):
     k = 10
     with tf.name_scope('stream_metrics'):
         val_preds = tf.expand_dims(fwd_op(input_fwd_d), 0)
-        # NB: THESE STREAMING METRICS DO **MICRO** UDPATES
+        # NB: THESE STREAMING METRICS DO **MICRO** UPDATES
         # Ex) for AUC, it will effectively concat all predictions and all trues (over all users)
         # instead of averaging the AUC's over users
         mapk, update_op_mapk = tf.contrib.metrics.streaming_sparse_average_precision_at_k(

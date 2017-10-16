@@ -8,19 +8,13 @@ import os
 from tiefrex.core import EmbeddingProjector, FactModel
 from tiefrex.nets import EmbeddingMap, BilinearNet, BilinearNetWithNum, BilinearNetWithNumFC
 
-from tiefrex.config.main_cfg import main_cfg
-from tiefrex.config.eval_cfg import eval_cfg
 from tiefrex import naive_sampler
 from tiefrex.data import TrainDataLoader
 from tiefrex.evaluation import Validator
 from tiefrex.config_parser import Config
 from lib_cerebro_py.log import logger
-from tiefrex.constants import FType
 
 config = Config('tiefrex/config/config.py')
-# config = Config('tiefrex/config/config_looks.py')
-# config = Config('tiefrex/config/config_amzn.py')
-# config = Config('tiefrex/config/config_test.py')
 
 env = 'local'
 
@@ -31,7 +25,7 @@ EMB_DIM = 16
 batch_size = config.get('batch_size')
 n_steps = 50000+1
 log_every = 100
-eval_every = 1000
+eval_every = 500
 save_every = 50000
 LOG_DIR = config.get('log_dir')
 tf.gfile.MkDir(LOG_DIR)

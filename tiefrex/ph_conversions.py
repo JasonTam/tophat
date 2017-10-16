@@ -1,9 +1,10 @@
 import tensorflow as tf
-from typing import Iterable, Dict, List
+from typing import Iterable
 from tiefrex.constants import *
 
 
-def fwd_dict_via_cats(cat_keys: Iterable[str], batch_size: int) -> Dict[str, tf.Tensor]:
+def fwd_dict_via_cats(cat_keys: Iterable[str],
+                      batch_size: int=None) -> Dict[str, tf.Tensor]:
     """ Creates placeholders for forward inference
     :param cat_keys: feature names
     :param batch_size: 
@@ -19,7 +20,7 @@ def fwd_dict_via_cats(cat_keys: Iterable[str], batch_size: int) -> Dict[str, tf.
 
 def pair_dict_via_cols(user_cat_cols: Iterable[str],
                        item_cat_cols: Iterable[str],
-                       batch_size: int) -> Dict[str, tf.Tensor]:
+                       batch_size: int=None) -> Dict[str, tf.Tensor]:
     """ Creates placeholders for paired loss
     :param user_cat_cols: 
     :param item_cat_cols: 
@@ -28,21 +29,24 @@ def pair_dict_via_cols(user_cat_cols: Iterable[str],
     """
     input_pair_d = {
         **{f'{USER_VAR_TAG}.{feat_name}': tf.placeholder(
-            tf.int32, shape=[batch_size], name=f'{USER_VAR_TAG}.{feat_name}_input')
+            tf.int32, shape=[batch_size],
+            name=f'{USER_VAR_TAG}.{feat_name}_input')
             for feat_name in user_cat_cols},
         **{f'{POS_VAR_TAG}.{feat_name}': tf.placeholder(
-            tf.int32, shape=[batch_size], name=f'{POS_VAR_TAG}.{feat_name}_input')
+            tf.int32, shape=[batch_size],
+            name=f'{POS_VAR_TAG}.{feat_name}_input')
             for feat_name in item_cat_cols},
         **{f'{NEG_VAR_TAG}.{feat_name}': tf.placeholder(
-            tf.int32, shape=[batch_size], name=f'{NEG_VAR_TAG}.{feat_name}_input')
+            tf.int32, shape=[batch_size],
+            name=f'{NEG_VAR_TAG}.{feat_name}_input')
             for feat_name in item_cat_cols}
     }
     return input_pair_d
 
 
-######
-
-def ph_dict_via_feats(feat_names: List[str], batch_size: int, dtype,
+def ph_dict_via_feats(feat_names: List[str],
+                      dtype,
+                      batch_size: int=None,
                       input_size=1,
                       tag: str=None,
                       ) -> Dict[str, tf.Tensor]:
@@ -71,11 +75,18 @@ def ph_dict_via_feats(feat_names: List[str], batch_size: int, dtype,
 
 
 def ph_via_ftypemeta(ftypemeta: FtypeMeta,
-                     batch_size: int, tag: str=None) -> Dict[str, tf.Tensor]:
-    cat_d = ph_dict_via_feats(ftypemeta[FType.CAT], batch_size, dtype=tf.int32, tag=tag)
+                     batch_size: int=None,
+                     tag: str=None) -> Dict[str, tf.Tensor]:
+    cat_d = ph_dict_via_feats(ftypemeta[FType.CAT],
+                              dtype=tf.int32,
+                              batch_size=batch_size,
+                              tag=tag)
     if FType.NUM in ftypemeta:
         num_ph_l = [
-            ph_dict_via_feats([tup[0]], batch_size, dtype=tf.float32, tag=tag, input_size=tup[1])
+            ph_dict_via_feats([tup[0]],
+                              dtype=tf.float32,
+                              batch_size=batch_size,
+                              tag=tag, input_size=tup[1])
             for tup in ftypemeta[FType.NUM]]
         num_d = {k: v for d in num_ph_l for k, v in d.items()}
     else:
@@ -87,7 +98,7 @@ def pair_dict_via_ftypemeta(
         user_ftypemeta: FtypeMeta,
         item_ftypemeta: FtypeMeta,
         context_ftypemeta: FtypeMeta,
-        batch_size: int) -> Dict[str, tf.Tensor]:
+        batch_size: int=None) -> Dict[str, tf.Tensor]:
     input_pair_d = {
         **ph_via_ftypemeta(user_ftypemeta, batch_size, tag=USER_VAR_TAG),
         **ph_via_ftypemeta(item_ftypemeta, batch_size, tag=POS_VAR_TAG),
@@ -98,5 +109,5 @@ def pair_dict_via_ftypemeta(
 
 
 def fwd_dict_via_ftypemeta(
-        ftypemeta: FtypeMeta, batch_size: int) -> Dict[str, tf.Tensor]:
+        ftypemeta: FtypeMeta, batch_size: int=None) -> Dict[str, tf.Tensor]:
     return ph_via_ftypemeta(ftypemeta, batch_size, tag=None)

@@ -42,8 +42,10 @@ def feed_via_inds(inds_batch, cols, codes_arr, num_arr, num_key):
     """
     :param inds_batch: indices of the batch to slice
     :param cols: {user|item}_cols 
-    :param codes_arr: categorical codes array [n_total_samples x n_categorical_features]
-    :param num_arr: numerical features array [n_total_samples x n_numerical_features]
+    :param codes_arr: categorical codes array 
+        [n_total_samples x n_categorical_features]
+    :param num_arr: numerical features array
+        [n_total_samples x n_numerical_features]
     :param num_key: numerical features key
     :return: 
     """
@@ -70,12 +72,14 @@ class PairSampler(object):
         :param train_data_loader: tiefrex.core.TrainDataLoader
         :param input_pair_d: dictionary of placeholders keyed by name
         :param batch_size: batch size
-        :param shuffle: if `True`, batches will be sampled from a shuffled index
+        :param shuffle: if `True` batches will be sampled from a shuffled index
         :param n_epochs: number of epochs until `StopIteration`
-        :param uniform_users: if `True` sample by user rather than by positive interaction
-            (~optimize all users equally rather than weighing more active users)
+        :param uniform_users: if `True` sample by user
+            rather than by positive interaction
+            (optimize all users equally rather than weighing more active users)
         :param method: negative sampling method
-        :param net: network object that implements a forward method for adaptive sampling
+        :param net: network object that implements a forward method
+            for adaptive sampling
         """
         interactions_df = train_data_loader.interactions_df
         user_col = train_data_loader.user_col
@@ -88,18 +92,21 @@ class PairSampler(object):
             train_data_loader.cats_d[train_data_loader.item_col]]
 
         # TODO: some switch for context existence
-        # context features are already aligned with `interaction_df` by construction
+        # context features are already aligned with `interaction_df`
+        #   by construction
         context_feat_codes_df = train_data_loader.context_feats_codes_df
 
         # Grab underlying numerical feature array(s)
         self.user_num_feats_arr = None
         self.item_num_feats_arr = None
         if FType.NUM in train_data_loader.user_feats_d:
-            self.user_num_feats_arr = train_data_loader.user_feats_d[FType.NUM].loc[
-                train_data_loader.cats_d[train_data_loader.user_col]].values
+            self.user_num_feats_arr = train_data_loader.\
+                user_feats_d[FType.NUM].loc[train_data_loader.cats_d[
+                    train_data_loader.user_col]].values
         if FType.NUM in train_data_loader.item_feats_d:
-            self.item_num_feats_arr = train_data_loader.item_feats_d[FType.NUM].loc[
-                train_data_loader.cats_d[train_data_loader.item_col]].values
+            self.item_num_feats_arr = train_data_loader.\
+                item_feats_d[FType.NUM].loc[train_data_loader.cats_d[
+                    train_data_loader.item_col]].values
         # TODO: NUM not supported for context right now
 
         self.method = method
@@ -127,7 +134,8 @@ class PairSampler(object):
               interactions_df[item_col].cat.codes)),
             shape=(self.n_users, self.n_items), dtype=bool)
 
-        if self.method in {'uniform_verified', 'adaptive'} or self.uniform_users:
+        if self.method in {'uniform_verified', 'adaptive'} \
+                or self.uniform_users:
             self.xn_csr = self.xn_coo.tocsr()
         else:
             self.xn_csr = None
@@ -152,9 +160,11 @@ class PairSampler(object):
         if self.method == 'adaptive':
             self.sess = tf.Session()
             self.max_sampled = 128  # for WARP
-            self.pos_fwd_d = self._net.get_fwd_dict(batch_size=self.batch_size)
+            self.pos_fwd_d = self._net.get_fwd_dict(
+                batch_size=self.batch_size)
             self.pos_fwd_op = self._net.forward(self.pos_fwd_d)
-            self.neg_fwd_d = self._net.get_fwd_dict(batch_size=self.max_sampled)
+            self.neg_fwd_d = self._net.get_fwd_dict(
+                atch_size=self.max_sampled)
             self.neg_fwd_op = self._net.forward(self.neg_fwd_d)
 
             self.sess.run(tf.global_variables_initializer())
@@ -183,8 +193,9 @@ class PairSampler(object):
 
     def sample_adaptive(self, user_inds_batch, pos_item_inds_batch):
         """
-        Uses the forward prediction of `self._net` to sample the first violating negative
-        Note: If WARP, we'll also return the number of samples we passed through
+        Uses the forward prediction of `self._net` to sample the 
+            first violating negative
+        Note: If WARP, we also return the number of samples we passed through
          TODO: need to handle this return signature somehow
         """
         neg_item_inds_batch = []
@@ -194,11 +205,15 @@ class PairSampler(object):
         for user_ind, pos_score in zip(user_inds_batch, pos_scores):
             user_pos_item_inds = get_row_nz(self.xn_csr, user_ind)
             # Sample all candidates right away
-            neg_item_inds = np.random.randint(self.n_items, size=self.max_sampled)
+            neg_item_inds = np.random.randint(
+                self.n_items, size=self.max_sampled)
             verification = np.array(
-                [ind not in user_pos_item_inds for ind in neg_item_inds], dtype=bool)
-            neg_cand_fwd_dict = self.fwd_dicter_via_inds(user_ind, neg_item_inds, self.neg_fwd_d)
-            neg_cand_scores = self.sess.run(self.neg_fwd_op, feed_dict=neg_cand_fwd_dict)
+                [ind not in user_pos_item_inds
+                 for ind in neg_item_inds], dtype=bool)
+            neg_cand_fwd_dict = self.fwd_dicter_via_inds(
+                user_ind, neg_item_inds, self.neg_fwd_d)
+            neg_cand_scores = self.sess.run(
+                self.neg_fwd_op, feed_dict=neg_cand_fwd_dict)
 
             violations = (neg_cand_scores > pos_score - 1) & verification
             # Get index of the first violation
@@ -207,14 +222,18 @@ class PairSampler(object):
                 # There were no violations
                 first_violator_ind = self.max_sampled - 1
             neg_item_inds_batch.append(neg_item_inds[first_violator_ind])
-            # TODO: here is also where we would return the number of samples to it took to reach a violation
-            #   = first_violator_ind - (~verification[:first_violator_ind]).sum()
+            # TODO: here is also where we would return the number of samples
+            #   it took to reach a violation
+            # n_samp = first_violator_ind - (
+            #     ~verification[:first_violator_ind]).sum()
         return neg_item_inds_batch
 
-    def sample_most_violating_candidate(self, user_inds_batch, n_candidates=10):
+    def sample_most_violating_candidate(self,
+                                        user_inds_batch,
+                                        n_candidates=10):
         """
-        Uses the forward prediction of `self._net` to sample the most violating candidate from
-        a set of random candidates
+        Uses the forward prediction of `self._net` to sample the most 
+            violating candidate from a set of random candidates
         """
         raise NotImplementedError
 
@@ -244,11 +263,13 @@ class PairSampler(object):
 
     def iter_by_xn(self):
         # The feed dict generator itself
-        # Note: can implement __next__ as well if we want book-keeping state info to be kept
+        # Note: can implement __next__ as well
+        #   if we want book-keeping state info to be kept
         for i in range(self.n_epochs):
             if self.shuffle:
                 np.random.shuffle(self.shuffle_inds)
-            inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)  # TODO: problem if less inds than batch_size
+            # TODO: problem if less inds than batch_size
+            inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)
             for inds_batch in inds_batcher:
                 user_inds_batch = self.xn_coo.row[inds_batch]
                 pos_item_inds_batch = self.xn_coo.col[inds_batch]
@@ -272,20 +293,23 @@ class PairSampler(object):
 
     def iter_by_user(self):
         # The feed dict generator itself
-        # Note: can implement __next__ as well if we want book-keeping state info to be kept
+        # Note: can implement __next__ as well
+        #   if we want book-keeping state info to be kept
         for i in range(self.n_epochs):
             if self.shuffle:
                 np.random.shuffle(self.shuffle_inds)
-            inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)  # TODO: problem if less inds than batch_size
+            # TODO: problem if less inds than batch_size
+            inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)
             for inds_batch in inds_batcher:
                 # TODO: WIP>>>
                 user_inds_batch = inds_batch
                 pos_l = []
-                # import ipdb; ipdb.set_trace()
+
                 for user_ind in user_inds_batch:
                     user_pos_item_inds = get_row_nz(self.xn_csr, user_ind)
                     # `random.choice` slow
-                    user_pos_item = user_pos_item_inds[np.random.randint(len(user_pos_item_inds))]
+                    user_pos_item = user_pos_item_inds[np.random.randint(
+                        len(user_pos_item_inds))]
                     pos_l.append(user_pos_item)
                 # Select random known pos for user
                 # pos_item_inds_batch = self.xn_coo.col[inds_batch]
@@ -298,21 +322,29 @@ class PairSampler(object):
                 pos_item_feed_d = self.item_feed_via_inds(pos_item_inds_batch)
                 neg_item_feed_d = self.item_feed_via_inds(neg_item_inds_batch)
 
+                # TODO: fix context feed
                 feed_pair_dict = feed_via_pair(
-                    self.input_pair_d, user_feed_d, pos_item_feed_d, neg_item_feed_d)
+                    self.input_pair_d,
+                    user_feed_d,
+                    pos_item_feed_d, neg_item_feed_d,
+                    context_feed_d={},
+                )
                 yield feed_pair_dict
 
     def fwd_dicter_via_inds(self, user_inds, item_inds, fwd_d):
         """
         :param user_inds: Can be a single user ind or an iterable of user inds
-            If a single user ind is provided, it will be repeated for each item in `item_inds`
+            If a single user ind is provided, it will be repeated 
+                for each item in `item_inds`
         :param item_inds: Iterable of item inds
         :param fwd_d: forward feed dict template
         """
         if not hasattr(user_inds, '__iter__'):
             user_inds = [user_inds] * len(item_inds)
-        user_feed_d = dict(zip(self.user_cols, self.user_feats_codes_arr[user_inds, :].T))
-        item_feed_d = dict(zip(self.item_cols, self.item_feats_codes_arr[item_inds, :].T))
+        user_feed_d = dict(zip(self.user_cols,
+                               self.user_feats_codes_arr[user_inds, :].T))
+        item_feed_d = dict(zip(self.item_cols,
+                               self.item_feats_codes_arr[item_inds, :].T))
         feed_fwd_dict = {
             **{fwd_d[f'{feat_name}']: data_in
                for feat_name, data_in in user_feed_d.items()},
