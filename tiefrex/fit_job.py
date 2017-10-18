@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from time import time
+import pickle
 
 import os
 
@@ -26,7 +27,7 @@ batch_size = config.get('batch_size')
 n_steps = 50000+1
 log_every = 100
 eval_every = 500
-save_every = 50000
+save_every = 500
 LOG_DIR = config.get('log_dir')
 tf.gfile.MkDir(LOG_DIR)
 
@@ -56,6 +57,9 @@ def run():
     #     embedding_map=embedding_map,
     #     num_meta=train_data_loader.num_meta)
     # )
+
+    # Save the catalog
+    pickle.dump(model.net.embedding_map.cats_d, open('/tmp/cat_shit.p', 'wb'))
 
     loss = model.get_loss()
     train_op = model.training(loss)
@@ -101,11 +105,12 @@ def run():
                 logger.info('(%.3f sec) \t Step %d: \t (train)loss = %.8f ' % (
                     toc, step, loss_val))
 
+                if (step % save_every == 0):  # and step > 0:
+                    saver.save(sess, os.path.join(LOG_DIR, 'model.ckpt'), step)
+                    logger.info('...Model checkpointed')
+
                 if step % eval_every == 0:
                     validator.run_val(sess, summary_writer, step)
-
-                if (step % save_every == 0) and step > 0:
-                    saver.save(sess, os.path.join(LOG_DIR, 'model.ckpt'), step)
 
         embedding_projector.viz()
 
