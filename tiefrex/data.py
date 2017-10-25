@@ -53,6 +53,8 @@ class InteractionsSource(object):
                  activity_col: Optional[str]=None,
                  activity_filter_set: Optional[set]=None,
                  assign_dates: bool=True,
+                 days_lookback: int=9999,
+                 date_lookforward: Optional[str]=None
                  ):
         self.path = path
         self.user_col = user_col
@@ -60,6 +62,8 @@ class InteractionsSource(object):
         self.activity_col = activity_col
         self.activity_filter_set = activity_filter_set
         self.assign_dates = assign_dates
+        self.days_lookback = days_lookback
+        self.date_lookforward = date_lookforward
 
         self.data = None
 
@@ -76,7 +80,8 @@ class InteractionsSource(object):
                 interactions_df = custom_io.try_load(
                     self.path,
                     limit_dates=True,
-                    days_lookback=9999,
+                    days_lookback=self.days_lookback,
+                    date_lookforward=self.date_lookforward,
                     assign_dates=self.assign_dates,
                 )
             if 'value' in interactions_df.columns \

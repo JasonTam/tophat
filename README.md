@@ -24,9 +24,18 @@ make gpu
 python3.6 tiefrex/fit_job.py
 ```
 
+Note: [nvidia-docker](github.com/NVIDIA/nvidia-docker) should be installed for 
+GPU docker images
+
 Tensorboard can be run for inspection (does not need to be within
 docker container as the log dir is shared by a Docker volume).
 
 ```
 tensorboard --logdir=/tmp/tensorboard-logs
+```
+
+
+## Integration Test
+```
+make gpu-integration
 ```

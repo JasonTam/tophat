@@ -8,9 +8,11 @@ WORKDIR /opt/cerebro-deep-rec-engine
 
 ADD requirements.txt .
 RUN pip install -r requirements.txt
-RUN pip install tensorflow==1.1.0
+RUN pip install tensorflow==1.3.0
 
 ADD tiefrex /opt/cerebro-deep-rec-engine/tiefrex
 ENV PYTHONPATH=$PYTHONPATH:/opt/cerebro-deep-rec-engine/tiefrex
 
-ENTRYPOINT bash
+ADD bin/run.sh bin/run.sh
+
+ENTRYPOINT ["bin/run.sh"]
