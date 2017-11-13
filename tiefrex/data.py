@@ -254,6 +254,11 @@ def load_simple(
         item_specific_feature = True
 
     # TODO: Extreme simplifying assumption (should be handled better):
+    #     This gets rid of missing side features
+    user_feats_d[FType.CAT].dropna(axis=0, inplace=True)
+    item_feats_d[FType.CAT].dropna(axis=0, inplace=True)
+
+    # TODO: Another simplifying assumption:
     interactions_df, user_feats_d, item_feats_d, = simplifying_assumption(
         interactions_df,
         user_feats_d, item_feats_d,

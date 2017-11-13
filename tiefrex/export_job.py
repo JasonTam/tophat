@@ -201,7 +201,8 @@ class FactorExportJob(object):
 
 if __name__ == '__main__':
     # config = Config('tiefrex/config/export_config.py')
-    config = Config('tiefrex/config/export_config-integ.py')
+    # config = Config('tiefrex/config/export_config-integ.py')
+    config = Config('tiefrex/config/export_config-prod.py')
     job = FactorExportJob(
         config.get('path_cats'),
         config.get('path_meta'),

@@ -9,7 +9,7 @@ from tiefrex.constants import *
 from tiefrex.data import TrainDataLoader
 from tiefrex.utils_sparse import get_row_nz
 from typing import Dict, Iterable, Sized
-
+import itertools as it
 
 def batcher(iterable: Sized, n=1):
     """ Generates fixed-size chunks (will not yield last chunk if too small)
@@ -66,7 +66,8 @@ class PairSampler(object):
                  n_epochs: int=-1,
                  uniform_users: bool=False,
                  method: str='uniform',
-                 net=None,
+                 model=None,
+                 seed: int=0,
                  ):
         """
         :param train_data_loader: tiefrex.core.TrainDataLoader
@@ -78,9 +79,12 @@ class PairSampler(object):
             rather than by positive interaction
             (optimize all users equally rather than weighing more active users)
         :param method: negative sampling method
-        :param net: network object that implements a forward method
+        :param model: network object that implements a forward method
             for adaptive sampling
         """
+        self.seed = seed
+        np.random.seed(self.seed)
+
         interactions_df = train_data_loader.interactions_df
         user_col = train_data_loader.user_col
         item_col = train_data_loader.item_col
@@ -123,7 +127,7 @@ class PairSampler(object):
         self.uniform_users = uniform_users
 
         self.input_pair_d = input_pair_d
-        self._net = net
+        self._model = model
 
         # Upfront processing
         self.n_users = len(interactions_df[user_col].cat.categories)
@@ -158,16 +162,14 @@ class PairSampler(object):
 
         # Some more crap for the more complex strats
         if self.method == 'adaptive':
-            self.sess = tf.Session()
-            self.max_sampled = 128  # for WARP
-            self.pos_fwd_d = self._net.get_fwd_dict(
+            self.max_sampled = 32  # for WARP
+            self.pos_fwd_d = self._model.get_fwd_dict(
                 batch_size=self.batch_size)
-            self.pos_fwd_op = self._net.forward(self.pos_fwd_d)
-            self.neg_fwd_d = self._net.get_fwd_dict(
-                atch_size=self.max_sampled)
-            self.neg_fwd_op = self._net.forward(self.neg_fwd_d)
+            self.pos_fwd_op = self._model.forward(self.pos_fwd_d)
+            self.neg_fwd_d = self._model.get_fwd_dict()
+            self.neg_fwd_op = self._model.forward(self.neg_fwd_d)
 
-            self.sess.run(tf.global_variables_initializer())
+        self.sess = None
 
     def __iter__(self):
         if self.uniform_users:
@@ -191,51 +193,61 @@ class PairSampler(object):
             neg_item_inds_batch.append(neg_item_ind)
         return neg_item_inds_batch
 
-    def sample_adaptive(self, user_inds_batch, pos_item_inds_batch):
+    def sample_adaptive(self, user_inds_batch, pos_item_inds_batch,
+                        use_first_violation=False,
+                        nonpos_verification=False,  # TODO
+                        ):
         """
-        Uses the forward prediction of `self._net` to sample the 
+        Uses the forward prediction of `self._model` to sample the 
             first violating negative
         Note: If WARP, we also return the number of samples we passed through
          TODO: need to handle this return signature somehow
+         
+         use_first_violation: if `True`, use the first violation,
+            else, we just use the worst offender
+        nonpos_verification: if `True`, negatives will be verified as non-pos
         """
-        neg_item_inds_batch = []
+        batch_size = len(user_inds_batch)  # NOT max_sampled
+
         pos_fwd_dict = self.fwd_dicter_via_inds(
             user_inds_batch, pos_item_inds_batch, self.pos_fwd_d)
         pos_scores = self.sess.run(self.pos_fwd_op, feed_dict=pos_fwd_dict)
-        for user_ind, pos_score in zip(user_inds_batch, pos_scores):
-            user_pos_item_inds = get_row_nz(self.xn_csr, user_ind)
-            # Sample all candidates right away
-            neg_item_inds = np.random.randint(
-                self.n_items, size=self.max_sampled)
-            verification = np.array(
-                [ind not in user_pos_item_inds
-                 for ind in neg_item_inds], dtype=bool)
-            neg_cand_fwd_dict = self.fwd_dicter_via_inds(
-                user_ind, neg_item_inds, self.neg_fwd_d)
-            neg_cand_scores = self.sess.run(
-                self.neg_fwd_op, feed_dict=neg_cand_fwd_dict)
 
-            violations = (neg_cand_scores > pos_score - 1) & verification
+        neg_item_inds = np.random.randint(
+            self.n_items, size=[batch_size, self.max_sampled])
+
+        neg_cand_fwd_dict = self.fwd_dicter_via_inds(
+            np.tile(user_inds_batch[:, None], self.max_sampled).flatten(),
+            neg_item_inds.flatten(),
+            self.neg_fwd_d)
+
+        # These have shape = (batch_size, max_sampled)
+        neg_cand_scores = self.sess.run(
+            self.neg_fwd_op, feed_dict=neg_cand_fwd_dict
+        ).reshape([-1, self.max_sampled])
+        pos_scores_tile = np.tile(pos_scores[:, None], self.max_sampled)
+
+        if use_first_violation:
+            violations = (neg_cand_scores > pos_scores_tile - 1)
             # Get index of the first violation
-            first_violator_ind = np.argmax(violations)
-            if ~violations[first_violator_ind]:
-                # There were no violations
-                first_violator_ind = self.max_sampled - 1
-            neg_item_inds_batch.append(neg_item_inds[first_violator_ind])
-            # TODO: here is also where we would return the number of samples
-            #   it took to reach a violation
-            # n_samp = first_violator_ind - (
-            #     ~verification[:first_violator_ind]).sum()
-        return neg_item_inds_batch
+            first_violator_inds = np.argmax(violations, axis=1)
 
-    def sample_most_violating_candidate(self,
-                                        user_inds_batch,
-                                        n_candidates=10):
-        """
-        Uses the forward prediction of `self._net` to sample the most 
-            violating candidate from a set of random candidates
-        """
-        raise NotImplementedError
+            # For the users with no violations, set first violation to last ind
+            first_violator_inds[~violations[
+                range(batch_size), first_violator_inds]
+            ] = self.max_sampled - 1
+
+            neg_item_inds_batch = neg_item_inds[
+                range(len(neg_item_inds)), first_violator_inds
+            ]
+        else:
+            # Get the worst offender
+            # TODO: maybe do the non-pos verification in this case
+            neg_item_inds_batch = neg_item_inds[
+                range(batch_size), np.argmax(neg_cand_scores, axis=1)
+            ]
+
+        return neg_item_inds_batch
 
     def user_feed_via_inds(self, user_inds_batch):
         return feed_via_inds(user_inds_batch,

@@ -57,12 +57,12 @@ class FactModel(object):
         with tf.name_scope('placeholders'):
             self.input_pair_d = self.get_pair_dict(self.net.embedding_map.data_loader.batch_size)
 
-    def get_fwd_dict(self, batch_size):
+    def get_fwd_dict(self, batch_size: int=None):
         return fwd_dict_via_cats(
             self.net.embedding_map.cats_d.keys(),
             batch_size)
 
-    def get_pair_dict(self, batch_size):
+    def get_pair_dict(self, batch_size: int=None):
         return pair_dict_via_ftypemeta(
             user_ftypemeta={
                 FType.CAT: self.net.embedding_map.user_cat_cols,
@@ -108,15 +108,20 @@ class FactModel(object):
                     neg_input_d), name='neg_score')
 
             with tf.name_scope('loss'):
+                # TODO: this should be tied to the sampling technique
                 # Note: Hard coded BPR loss for now
-                loss_bpr = tf.subtract(1., tf.sigmoid(
-                    pos_score - neg_score), name='bpr')
-                return tf.reduce_mean(loss_bpr, name='bpr_mean')
+                # loss_bpr = tf.subtract(1., tf.sigmoid(
+                #     pos_score - neg_score), name='bpr')
+                # return tf.reduce_mean(loss_bpr, name='bpr_mean')
 
                 # loss_hinge = tf.clip_by_value(neg_score - pos_score + 1.,
-                #                               clip_value_min=0., clip_value_max=999999.,
+                #                               clip_value_min=0.,
+                #                               clip_value_max=999.,
                 #                               name='hinge')
                 # return tf.reduce_mean(loss_hinge, name='hinge_mean')
+
+                loss_softplus = tf.log1p(tf.exp(neg_score - pos_score + 1.))
+                return tf.reduce_mean(loss_softplus, name='softplus_mean')
 
     def training(self, loss) -> tf.Operation:
         """

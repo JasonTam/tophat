@@ -2,7 +2,9 @@ FROM nvidia/cuda:8.0-cudnn6-devel-ubuntu16.04
 
 RUN apt update
 
-RUN apt install -y build-essential \
+RUN apt install -y --no-install-recommends \
+    build-essential \
+    gcc g++ libsnappy-dev \
     checkinstall \
     wget \
     libreadline-gplv2-dev \
@@ -31,6 +33,8 @@ RUN apt-get install -y git libcurl4-openssl-dev
 ADD requirements.txt .
 RUN pip3.6 install -r requirements.txt
 RUN pip3.6 install tensorflow-gpu==1.3.0
+
+RUN apt-get purge -y --auto-remove gcc g++ build-essential
 
 ADD tiefrex /opt/cerebro-deep-rec-engine/tiefrex
 ENV PYTHONPATH=$PYTHONPATH:/opt/cerebro-deep-rec-engine/tiefrex

@@ -320,7 +320,7 @@ class Validator(object):
     def __init__(self, config, train_data_loader: TrainDataLoader,
                  limit_items=-1, n_users_eval=200,
                  include_cold=True, cold_only=False, n_xns_as_cold=5,
-                 ):
+                 seed: int=0):
         """
         :param limit_items: limits the number of items in catalog to predict over
             -1 for all items (from train and val)
@@ -336,6 +336,9 @@ class Validator(object):
             with additional unseen users/items
             be careful
         """
+        self.seed = seed
+        np.random.seed(self.seed)
+
         interactions_val = config.get('val_interactions')
         self.user_col_val = interactions_val.user_col
         self.item_col_val = interactions_val.item_col
@@ -451,7 +454,6 @@ class Validator(object):
             # This will consider all "new"/validation items
             #   plus a limited selection of "old"/training items
             #   (no special logic to handle overlapping sets)
-            np.random.seed(322)
             np.random.shuffle(self.item_ids)
 
             val_item_ids = list(self.interactions_df[self.item_col_val].unique().to_dense())

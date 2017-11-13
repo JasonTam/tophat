@@ -11,7 +11,7 @@ class EmbeddingMap(object):
                  data_loader,
                  embedding_dim: int=16,
                  l2_bias: float=0.,
-                 l2_emb: float=1e-4,
+                 l2_emb: float=0.,
                  seed=322,
                  zero_init_rows: Dict[str, Iterable[int]]=None,
                  vis_specific_embs=True,
