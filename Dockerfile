@@ -13,8 +13,8 @@ RUN pip install -r requirements.txt
 RUN pip install tensorflow==1.3.0
 RUN apt-get purge -y --auto-remove gcc g++ build-essential
 
-ADD tiefrex /opt/cerebro-deep-rec-engine/tiefrex
-ENV PYTHONPATH=$PYTHONPATH:/opt/cerebro-deep-rec-engine/tiefrex
+ADD tophat /opt/cerebro-deep-rec-engine/tophat
+ENV PYTHONPATH=$PYTHONPATH:/opt/cerebro-deep-rec-engine/tophat
 RUN mkdir /tmp/tensorboard-logs
 ADD bin/run.sh bin/run.sh
 

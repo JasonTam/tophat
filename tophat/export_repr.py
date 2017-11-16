@@ -1,9 +1,9 @@
 import numpy as np
 import tensorflow as tf
-from tiefrex.nets import EmbeddingMap, lookup_wrapper
-from tiefrex import ph_conversions
-from tiefrex.constants import FType
-from tiefrex.data import TrainDataLoader
+from tophat.embedding import EmbeddingMap, lookup_wrapper
+from tophat import ph_conversions
+from tophat.constants import FType
+from tophat.data import TrainDataLoader
 from typing import Dict, Tuple, Iterator, Any
 
 import os
@@ -12,7 +12,7 @@ from joblib import Parallel, delayed, cpu_count
 from lib_cerebro_py.aws.aws_s3_uri import AwsS3Uri
 from lib_cerebro_py.aws.aws_s3_object import AwsS3Object
 from lib_cerebro_py.log import logger
-from tiefrex import schemas
+from tophat import schemas
 from tqdm import tqdm
 from time import time
 from functools import partial
@@ -23,10 +23,16 @@ def rec_generator(
         representations: np.array, id_map: Dict[int, Any],
         partition: int, n_partitions: int =1) -> Iterator[Dict[str, Any]]:
     """
-    partition : the worker number (determines which stratification to process)
-    n_partitions : total number of partitions
-    representations: array of representation embeddings
-        (last slice is bias)
+    
+    Args:
+        representations: The representation vectors to export
+        id_map: Mapping of index to id
+        partition: Worker number (determines which stratification to process)
+        n_partitions: Total number of partitions
+
+    Yields:
+        Dictionary record to export
+
     """
     for row_n in range(partition, representations.shape[0], n_partitions):
         row = representations[row_n]

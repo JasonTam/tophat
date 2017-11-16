@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-from tiefrex.core import pair_dict_via_cols
-from tiefrex import naive_sampler
+from tophat.core import pair_dict_via_cols
+from tophat import naive_sampler
 
 
 class TestPP(unittest.TestCase):

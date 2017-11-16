@@ -5,14 +5,14 @@ import os
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from tiefrex import schemas
-from tiefrex.config_parser import Config
+from tophat import schemas
+from tophat.config_parser import Config
 from joblib import Parallel, delayed, cpu_count
 from functools import partial
 from lib_cerebro_py.aws.aws_s3_uri import AwsS3Uri
 from lib_cerebro_py.aws.aws_s3_object import AwsS3Object
 from lib_cerebro_py.log import logger
-from tiefrex.convenience import import_pickle
+from tophat.convenience import import_pickle
 from typing import Iterator, Dict, Any, List
 
 
@@ -200,9 +200,7 @@ class FactorExportJob(object):
 
 
 if __name__ == '__main__':
-    # config = Config('tiefrex/config/export_config.py')
-    # config = Config('tiefrex/config/export_config-integ.py')
-    config = Config('tiefrex/config/export_config-prod.py')
+    config = Config('config/export_config-prod.py')
     job = FactorExportJob(
         config.get('path_cats'),
         config.get('path_meta'),

@@ -1,22 +1,18 @@
-import numpy as np
-import tensorflow as tf
-from tensorflow.python import debug as tf_debug
+import argparse
 from time import time
 
+import numpy as np
 import os
-import argparse
-
-from tiefrex.core import EmbeddingProjector, FactModel
-from tiefrex.nets import EmbeddingMap, BilinearNet, BilinearNetWithNum, BilinearNetWithNumFC
-
-from tiefrex.config.main_cfg import main_cfg
-from tiefrex.config.eval_cfg import eval_cfg
-from tiefrex import naive_sampler
-from tiefrex.data import TrainDataLoader
-from tiefrex.evaluation import Validator
-from tiefrex.config_parser import Config
+import tensorflow as tf
 from lib_cerebro_py.log import logger
-from tiefrex.constants import FType
+
+from tophat import naive_sampler
+from tophat.config_parser import Config
+from tophat.core import FactModel
+from tophat.data import TrainDataLoader
+from tophat.evaluation import Validator
+from tophat.embedding import EmbeddingMap, EmbeddingProjector
+from tophat.nets import BilinearNetWithNum
 
 env = 'local'
 
@@ -112,7 +108,7 @@ if __name__ == '__main__':
                         default='bpr', nargs='?',
                         choices=['bpr', 'vbpr'])
     args = parser.parse_args()
-    config = Config(f'tiefrex/config/config_amzn_{args.method}.py')
+    config = Config(f'config/config_amzn_{args.method}.py')
     SEED = config.get('seed')
     np.random.seed(SEED)
     LOG_DIR = config.get('log_dir')

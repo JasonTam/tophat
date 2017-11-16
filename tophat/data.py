@@ -1,14 +1,25 @@
-import pandas as pd
 import os
+import pandas as pd
+from collections import defaultdict
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
-from typing import Optional, Iterable, Tuple, Dict, List, Any
-from collections import defaultdict
-from tiefrex.constants import FType
-from tiefrex.utils_pp import append_dt_extracts
+from typing import Optional, Iterable, Tuple, Dict, List, Any, Sized
+
+from tophat.constants import FType
+from tophat.utils.pp_utils import append_dt_extracts
 
 
 class FeatureSource(object):
+    """Container for a source of feature-related data
+
+    Args:
+        path: Path of the data
+        feature_type: Type of feature (ex. categorical, numerical)
+        index_col: Name of the column to set as the index
+        use_cols: Subset of columns to consider
+        name: Name of the data source
+    """
+
     def __init__(self,
                  path: str,
                  feature_type: FType,
@@ -16,6 +27,7 @@ class FeatureSource(object):
                  use_cols: Optional[List[str]]=None,
                  name=None,
                  ):
+
         self.name = name
         self.path = path
         self.feature_type = feature_type
@@ -46,6 +58,20 @@ class FeatureSource(object):
 
 
 class InteractionsSource(object):
+    """Container for a source of interaction-related data
+
+    Args:
+        path: Path of the data
+        user_col: Name of the user column
+        item_col: Name of the item column
+        activity_col: Name of the interaction type
+        activity_filter_set: Subset of interaction types to consider
+        assign_dates: If True, and loading from date-partitioned
+            directories, assign the date information to a column
+        days_lookback: Max number of days to look back from today
+        date_lookforward: Furthest (most recent) date to consider
+    """
+
     def __init__(self,
                  path: str,
                  user_col: str,
@@ -56,6 +82,7 @@ class InteractionsSource(object):
                  days_lookback: int=9999,
                  date_lookforward: Optional[str]=None
                  ):
+
         self.path = path
         self.user_col = user_col
         self.item_col = item_col
@@ -99,7 +126,14 @@ class InteractionsSource(object):
 
 
 class TrainDataLoader(object):
-    def __init__(self, config):
+    """Convenience container to load and preprocess various sources of
+    training data
+
+    Args:
+        config: dictionary of various params
+    """
+
+    def __init__(self, config):  # TODO: config --> should be explicit args?
         self.batch_size = config.get('batch_size')
         interactions_train = config.get('train_interactions')
         self.activity_col = interactions_train.activity_col
@@ -189,14 +223,20 @@ class TrainDataLoader(object):
             self.num_meta['item_num_feats'] = self.item_num_feats_df.shape[1]
 
 
-def cast_cat(feats_d, existing_cats_d=None):
+def cast_cat(feats_d: Dict[FType, pd.DataFrame],
+             existing_cats_d: Optional[Dict[str, Sized]]=None
+             ) -> Dict[FType, pd.DataFrame]:
+    """Casts feature columns to categorical
+    -- optionally applying existing categories
+
+    Args:
+        feats_d: Dictionary of feature dataframes
+        existing_cats_d: Optional dictionary of existing categories
+
+    Returns:
+        Modified version of `feats_d`
     """
-    Cast feature columns to categorical
-    Optionally applying existing categories
-    :param feats_d: 
-    :param existing_cats_d: 
-    :return: 
-    """
+
     for col in feats_d[FType.CAT].columns:
         if existing_cats_d and col in existing_cats_d:
             # todo: shouldnt we be adding the new cats?
@@ -219,17 +259,20 @@ def load_simple(
         item_specific_feature: bool=True,
         existing_cats_d: Optional[Dict[str, List[Any]]]=None,
 ) -> Tuple[pd.DataFrame, Dict[FType, pd.DataFrame], Dict[FType, pd.DataFrame]]:
-    """
-    Stand-in loader mostly for local testing
-    :param interactions_src: interactions data source
-    :param user_features_srcs: user feature data sources
-        if `None`, user_id will be the sole user feature
-    :param item_features_srcs: item feature data sources
-        if `None`, item_id will be the sole item feature
-    :param user_specific_feature: if `True`, includes a user_id as a feature
-    :param item_specific_feature: if `True`, includes a item_id as a feature
-    :param existing_cats_d: optional existing dictionary of categories to use
-    :return: 
+    """Stand-in loader mostly for local testing
+
+    Args:
+        interactions_src: Interactions data source
+        user_features_srcs: User feature data source(s)
+            if `None`, user_id will be the sole user feature
+        item_features_srcs: Item feature data source(s)
+            if `None`, item_id will be the sole item feature
+        user_specific_feature: If `True`, includes a user_id as a feature
+        item_specific_feature: If `True`, includes a item_id as a feature
+        existing_cats_d: Optional dictionary of existing categories
+
+    Returns:
+        Tuple of preprocessed interactions, user features, and item_features
     """
 
     interactions_df = interactions_src.load().data
@@ -338,30 +381,36 @@ def simplifying_assumption(interactions_df,
 
 def load_simple_warm_cats(
         interactions_src: InteractionsSource,
-        users_filt, items_filt,
-):
+        users_filt: Optional[Iterable]=None,
+        items_filt: Optional[Iterable]=None,
+) -> pd.DataFrame:
     """Stand-in validation data loader mostly for local testing
-        * Filters out new users and items  *
-        if cold entries are to be added,
-        add them into {user|item}_filt externally
-    :param interactions_src: interactions data source
-    :param users_filt : typically, existing users
-        ex) `user_feats_df[user_col].cat.categories)`
-    :param items_filt : typically, existing items
-        ex) `item_feats_df[item_col].cat.categories`
+
+    Args:
+        interactions_src: Interactions data source
+        users_filt: Subset of users to consider (typically, existing users)
+            ex) `user_feats_df[user_col].cat.categories)`
+        items_filt: Subset of items to consider (typically, existing items)
+            ex) `item_feats_df[item_col].cat.categories`
+
+    Returns:
+        Preprocessed interaction dataframe
     """
 
     interactions_df = interactions_src.load().data
     user_col = interactions_src.user_col
     item_col = interactions_src.item_col
 
-    # Simplifying assumption:
-    # All interactions have an entry in the feature dfs
-    in_user_feats = interactions_df[user_col].isin(users_filt)
-    in_item_feats = interactions_df[item_col].isin(items_filt)
-    # todo: only filter existing users
-    # interactions_df = interactions_df.loc[in_user_feats]
-    interactions_df = interactions_df.loc[in_user_feats & in_item_feats].copy()
+    filt_s = pd.Series([True]*len(interactions_df),
+                       index=interactions_df.index)
+
+    # All interactions should have an entry in provided filters
+    if users_filt is not None:
+        filt_s &= interactions_df[user_col].isin(users_filt)
+    if items_filt is not None:
+        filt_s &= interactions_df[item_col].isin(items_filt)
+
+    interactions_df = interactions_df.loc[filt_s].copy()
 
     interactions_df[user_col] = interactions_df[user_col].astype(
         'category', categories=users_filt)
@@ -374,6 +423,14 @@ def load_simple_warm_cats(
 
 
 def load_many_srcs(features_srcs: Iterable[FeatureSource]):
+    """Load and concatenate many feature sources
+    
+    Args:
+        features_srcs: Feature sources
+
+    Returns:
+
+    """
     src_d = defaultdict(list)
     for feat_src in features_srcs:
         src_d[feat_src.feature_type].append(feat_src.load().data)

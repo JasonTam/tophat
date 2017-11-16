@@ -7,18 +7,24 @@ def preset_interactions(fields_d: Dict[str, Iterable[str]],
                         interaction_type: str='inter',
                         max_order: int=2
                         ) -> Iterable[frozenset]:
-    """
-    Convenience feature interaction planner for common interaction types
-    :param fields_d: dictionary of group_name to iterable of feat_names that 
-        belong to that group
-        ex) `fields_d = {'user': {'gender', 'age'}, 
+    """Convenience feature interaction planner for common interaction types
+    
+    Args:
+        fields_d: Dictionary of group_name to iterable of feat_names that
+            belong to that group
+            ex) `fields_d = {'user': {'gender', 'age'}, 
                          'item': {'brand', 'pcat', 'price'}}`
-    :param interaction_type: preset type
-    :param max_order: max order of interactions
-        if `interaction_type` is `inter`, `max_order` should
-        not be larger than 3
-    :return: Iterable of interaction sets
+        interaction_type: One of {'intra', 'inter'}
+            intra: Include interactions for all features agnostic of group
+            inter: Include only interactions between different groups
+        max_order: Max order of interactions
+            If `interaction_type` is `inter`, `max_order` should be no larger
+            than 3
+
+    Returns:
+        Iterable of interaction sets (set will contain feature names)
     """
+
     if interaction_type == 'intra':  # includes intra field
         feature_pairs = it.chain(
             *(it.combinations(
@@ -40,7 +46,15 @@ def preset_interactions(fields_d: Dict[str, Iterable[str]],
 def muls_via_xn_sets(interaction_sets: Iterable[frozenset],
                      emb_d: Dict[str, tf.Tensor]
                      ) -> Dict[frozenset, tf.Tensor]:
-    """ Returns the element-wise product of embeddings (with node-reuse)
+    """ Computes element-wise product of embeddings (with node-reuse)
+    
+    Args:
+        interaction_sets: Interactions to process
+        emb_d: Dictionary of embedding tensors
+
+    Returns:
+        Dictionary of multiplication ops
+
     """
 
     interaction_sets = list(interaction_sets)
@@ -65,9 +79,16 @@ def muls_via_xn_sets(interaction_sets: Iterable[frozenset],
 
 
 def kernel_via_xn_muls(xn_nodes: Dict[frozenset, tf.Tensor]) -> tf.Tensor:
-    """ Reduce nodes (typically element-wise sums) with addition
-        (effectively yields dot product)
+    """Reduce nodes (typically element-wise sums) with addition
+    (effectively yields dot product)
+    
+    Args:
+        xn_nodes: Interaction nodes
+
+    Returns:
+        Reduced interactions
     """
+
     if len(xn_nodes):
         # Reduce nodes of order > 1
         contrib_dot = tf.add_n([
@@ -81,22 +102,25 @@ def kernel_via_xn_muls(xn_nodes: Dict[frozenset, tf.Tensor]) -> tf.Tensor:
 
 def kernel_via_xn_sets(interaction_sets: Iterable[frozenset],
                        emb_d: Dict[str, tf.Tensor]) -> tf.Tensor:
-    """
-    Computes arbitrary order interaction terms
+    """Computes arbitrary order interaction terms
     Reuses lower order terms
     
     Differs from typical HOFM as we will reuse lower order embeddings
         (not actually sure if this is OK in terms of expressiveness)
         In theory, we're supposed to use a new param matrix for each order
-            Much like how we use a bias param for order=1
-    :param interaction_sets: interactions to create nodes for
-    :param emb_d: dictionary of embedding tensors
-        NOTE: would include an additional `order` key to match HOFM literature
-    :return: 
-    
+        Much like how we use a bias param for order=1
+            
+    Args:
+        interaction_sets: Interactions to create nodes for
+        emb_d: Dictionary of embedding tensors
+
+    Returns:
+        Interactions that have passed through the kernel
+        
     References:
         Blondel, Mathieu, et al. "Higher-Order Factorization Machines." 
             Advances in Neural Information Processing Systems. 2016.
+
     """
     # TODO: for now we assume that all dependencies of previous order are met
     return kernel_via_xn_muls(muls_via_xn_sets(interaction_sets, emb_d))

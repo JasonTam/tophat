@@ -6,15 +6,16 @@ from time import time
 
 import os
 
-from tiefrex.core import EmbeddingProjector, FactModel
-from tiefrex.nets import EmbeddingMap, BilinearNetWithNum
+from tophat.core import FactModel
+from tophat.embedding import EmbeddingMap, EmbeddingProjector
+from tophat.nets import BilinearNetWithNum
 
-from tiefrex.data import TrainDataLoader
-from tiefrex.evaluation import Validator
-from tiefrex.config_parser import Config
+from tophat.data import TrainDataLoader
+from tophat.evaluation import Validator
+from tophat.config_parser import Config
 from lib_cerebro_py.log import logger
 
-config = Config('tiefrex/config/config_amzn_bpr.py')
+config = Config('config/config_amzn_bpr.py')
 
 env = 'local'
 

@@ -1,14 +1,18 @@
 import tensorflow as tf
-from typing import Iterable
-from tiefrex.constants import *
+from typing import Iterable, Union
+from tophat.constants import *
 
 
 def fwd_dict_via_cats(cat_keys: Iterable[str],
                       batch_size: int=None) -> Dict[str, tf.Tensor]:
-    """ Creates placeholders for forward inference
-    :param cat_keys: feature names
-    :param batch_size: 
-    :return: dictionary of placeholders
+    """Creates placeholders for forward inference
+    
+    Args:
+        cat_keys: Feature names
+        batch_size: Optional batch size
+
+    Returns:
+        Dictionary of placeholders
     """
     input_forward_d = {
         feat_name: tf.placeholder(tf.int32, shape=[batch_size],
@@ -21,11 +25,15 @@ def fwd_dict_via_cats(cat_keys: Iterable[str],
 def pair_dict_via_cols(user_cat_cols: Iterable[str],
                        item_cat_cols: Iterable[str],
                        batch_size: int=None) -> Dict[str, tf.Tensor]:
-    """ Creates placeholders for paired loss
-    :param user_cat_cols: 
-    :param item_cat_cols: 
-    :param batch_size: 
-    :return: 
+    """Creates placeholders for paired loss
+    
+    Args:
+        user_cat_cols: Name of user categorical feature columns
+        item_cat_cols: Name of item categorical feature columns
+        batch_size: Optional batch size
+
+    Returns:
+        Dictionary of placeholders
     """
     input_pair_d = {
         **{f'{USER_VAR_TAG}.{feat_name}': tf.placeholder(
@@ -45,12 +53,24 @@ def pair_dict_via_cols(user_cat_cols: Iterable[str],
 
 
 def ph_dict_via_feats(feat_names: List[str],
-                      dtype,
+                      dtype: Union[str, type],
                       batch_size: int=None,
                       input_size=1,
                       tag: str=None,
                       ) -> Dict[str, tf.Tensor]:
-    """ Creates a dictionary of placeholders keyed by feature name 
+    """Creates placeholders based on desired features
+    
+    Args:
+        feat_names: Name of features to consider
+        dtype: Data type of the placeholder
+        batch_size: Optional batch size
+        input_size: Size of non-batch dimension
+            (typically used for numerical features, else, 1)
+        tag: Prefix tag for the placeholder
+            (ex. "user", "neg")
+
+    Returns:
+        Dictionary of placeholders
     """
     if not feat_names:
         return {}
@@ -77,6 +97,17 @@ def ph_dict_via_feats(feat_names: List[str],
 def ph_via_ftypemeta(ftypemeta: FtypeMeta,
                      batch_size: int=None,
                      tag: str=None) -> Dict[str, tf.Tensor]:
+    """Creates placeholders based on feature type metadata 
+    
+    Args:
+        ftypemeta: Feature type metadata
+        batch_size: Optional batch size
+        tag: Prefix tag for the placeholder
+            (ex. "user", "neg")
+
+    Returns:
+        Dictionary of placeholders
+    """
     cat_d = ph_dict_via_feats(ftypemeta[FType.CAT],
                               dtype=tf.int32,
                               batch_size=batch_size,
@@ -99,6 +130,18 @@ def pair_dict_via_ftypemeta(
         item_ftypemeta: FtypeMeta,
         context_ftypemeta: FtypeMeta,
         batch_size: int=None) -> Dict[str, tf.Tensor]:
+    """Creates placeholders based on feature type metadata
+    for a pair of interactions
+    
+    Args:
+        user_ftypemeta: User feature type metadata
+        item_ftypemeta: Item feature type metadata
+        context_ftypemeta: Context feature type metadata
+        batch_size: Optional batch size
+
+    Returns:
+        Dictionary of placeholders
+    """
     input_pair_d = {
         **ph_via_ftypemeta(user_ftypemeta, batch_size, tag=USER_VAR_TAG),
         **ph_via_ftypemeta(item_ftypemeta, batch_size, tag=POS_VAR_TAG),
@@ -108,6 +151,4 @@ def pair_dict_via_ftypemeta(
     return input_pair_d
 
 
-def fwd_dict_via_ftypemeta(
-        ftypemeta: FtypeMeta, batch_size: int=None) -> Dict[str, tf.Tensor]:
-    return ph_via_ftypemeta(ftypemeta, batch_size, tag=None)
+fwd_dict_via_ftypemeta = ph_via_ftypemeta

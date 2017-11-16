@@ -7,14 +7,15 @@ import pickle
 import os
 import glob
 
-from tiefrex.core import EmbeddingProjector, FactModel
-from tiefrex.nets import EmbeddingMap, BilinearNet
+from tophat.core import FactModel
+from tophat.embedding import EmbeddingMap, EmbeddingProjector
+from tophat.nets import BilinearNet
 
-from tiefrex.naive_sampler import PairSampler
-from tiefrex.data import TrainDataLoader
-from tiefrex.evaluation import Validator
-from tiefrex.config_parser import Config
-from tiefrex.export_repr import RepresentationExportJob
+from tophat.naive_sampler import PairSampler
+from tophat.data import TrainDataLoader
+from tophat.evaluation import Validator
+from tophat.config_parser import Config
+from tophat.export_repr import RepresentationExportJob
 from lib_cerebro_py.log import logger
 import argparse
 import pprint
@@ -199,7 +200,7 @@ if __name__ == '__main__':
                         choices=['local', 'integ', 'prod'])
     args = parser.parse_args()
     logger.info(pprint.pformat(args))
-    config = Config(f'tiefrex/config/fit_config-{args.environment}.py')
+    config = Config(f'config/fit_config-{args.environment}.py')
     logger.info(pprint.pformat(config._params))
 
     job = FitJob(fit_config=config)

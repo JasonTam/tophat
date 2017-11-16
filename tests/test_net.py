@@ -1,5 +1,5 @@
 import unittest
-from tiefrex import core
+from tophat import core
 
 
 class TestNet(unittest.TestCase):

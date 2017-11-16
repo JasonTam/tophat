@@ -1,24 +1,19 @@
-import numpy as np
-import tensorflow as tf
-from tensorflow.python import debug as tf_debug
 from time import time
 
+import numpy as np
 import os
-
-from tiefrex.core import EmbeddingProjector, FactModel
-from tiefrex.nets import EmbeddingMap, BilinearNet, BilinearNetWithNum, BilinearNetWithNumFC
-
-from tiefrex.config.main_cfg import main_cfg
-from tiefrex.config.eval_cfg import eval_cfg
-from tiefrex import naive_sampler
-from tiefrex.data import TrainDataLoader
-from tiefrex.evaluation import Validator
-from tiefrex.config_parser import Config
+import tensorflow as tf
 from lib_cerebro_py.log import logger
-from tiefrex.constants import FType
 
-config = Config('tiefrex/config/config_context.py')
-# config = Config('tiefrex/config/config_context_fat.py')
+from tophat import naive_sampler
+from tophat.config_parser import Config
+from tophat.core import FactModel
+from tophat.data import TrainDataLoader
+from tophat.evaluation import Validator
+from tophat.embedding import EmbeddingMap, EmbeddingProjector
+from tophat.nets import BilinearNet
+
+config = Config('config/config_context.py')
 
 env = 'local'
 

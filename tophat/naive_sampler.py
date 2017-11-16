@@ -2,21 +2,31 @@
 Implements a generator for basic uniform random sampling of negative items
 """
 import sys
+
 import numpy as np
 import scipy.sparse as sp
 import tensorflow as tf
-from tiefrex.constants import *
-from tiefrex.data import TrainDataLoader
-from tiefrex.utils_sparse import get_row_nz
-from typing import Dict, Iterable, Sized
-import itertools as it
+from typing import Dict, Iterable, Sized, Sequence, Optional
 
-def batcher(iterable: Sized, n=1):
-    """ Generates fixed-size chunks (will not yield last chunk if too small)
+from tophat.constants import *
+from tophat.data import TrainDataLoader
+from tophat.utils.sparse_utils import get_row_nz
+
+
+def batcher(seq: Sized, n: int=1):
+    """Generates fixed-size chunks (will not yield last chunk if too small)
+    
+    Args:
+        seq: Sequence to batchify
+        n: Batch size
+
+    Yields:
+        Batch sequence
+
     """
-    l = len(iterable)
+    l = len(seq)
     for ii in range(0, l // n * n, n):
-        yield iterable[ii:min(ii + n, l)]
+        yield seq[ii:min(ii + n, l)]
 
 
 def feed_via_pair(input_pair_d: Dict[str, tf.Tensor],
@@ -38,17 +48,31 @@ def feed_via_pair(input_pair_d: Dict[str, tf.Tensor],
     return feed_pair_dict
 
 
-def feed_via_inds(inds_batch, cols, codes_arr, num_arr, num_key):
+def feed_via_inds(inds_batch: Sequence[int],
+                  cols: Sequence[str],
+                  codes_arr: np.array,
+                  num_arr: np.array,
+                  num_key: Optional[str],
+                  ):
+    """Gets the appropriate data slices for a batch of inds
+    (typically, this is the data to be placed in values of a feed dictionary)
+
+    Args:
+        inds_batch: Indices of the batch to slice on
+        cols: Names of columns to consider
+            Ex. user_cols, or item_cols
+        codes_arr: Encoded categorical features array
+            [n_total_samples x n_categorical_features]
+        num_arr: Numerical features array
+            [n_total_samples x n_numerical_features]
+        num_key: Numerical features key (for book-keeping)
+            Ex. 'item_num_feats'
+
+    Returns:
+        Dictionary of batch data
+
     """
-    :param inds_batch: indices of the batch to slice
-    :param cols: {user|item}_cols 
-    :param codes_arr: categorical codes array 
-        [n_total_samples x n_categorical_features]
-    :param num_arr: numerical features array
-        [n_total_samples x n_numerical_features]
-    :param num_key: numerical features key
-    :return: 
-    """
+
     if codes_arr is None:
         return {}
     d = dict(zip(cols, codes_arr[inds_batch, :].T))
@@ -58,6 +82,23 @@ def feed_via_inds(inds_batch, cols, codes_arr, num_arr, num_key):
 
 
 class PairSampler(object):
+    """Convenience class for generating (pos, neg) interaction pairs using
+    negative sampling
+
+    Args:
+        train_data_loader: Training data object
+        input_pair_d: Dictionary of placeholders keyed by name
+        batch_size: Batch size
+        shuffle: If `True`, batches will be sampled from a shuffled index
+        n_epochs: Number of epochs until `StopIteration`
+        uniform_users: If `True` sample by user
+            rather than by positive interaction
+            (optimize all users equally rather than weighing more active users)
+        method: Negative sampling method
+        model: Optional model for adaptive sampling
+        seed: Seed for random state
+
+    """
     def __init__(self,
                  train_data_loader: TrainDataLoader,
                  input_pair_d: Dict[str, tf.Tensor],
@@ -69,19 +110,7 @@ class PairSampler(object):
                  model=None,
                  seed: int=0,
                  ):
-        """
-        :param train_data_loader: tiefrex.core.TrainDataLoader
-        :param input_pair_d: dictionary of placeholders keyed by name
-        :param batch_size: batch size
-        :param shuffle: if `True` batches will be sampled from a shuffled index
-        :param n_epochs: number of epochs until `StopIteration`
-        :param uniform_users: if `True` sample by user
-            rather than by positive interaction
-            (optimize all users equally rather than weighing more active users)
-        :param method: negative sampling method
-        :param model: network object that implements a forward method
-            for adaptive sampling
-        """
+
         self.seed = seed
         np.random.seed(self.seed)
 
@@ -178,12 +207,32 @@ class PairSampler(object):
             return self.iter_by_xn()
 
     def sample_uniform(self, **_):
+        """Sample negatives uniformly over entire catalog of items
+        This is fast, but there is a chance of accidentally sampling a positive
+        (See `sample_uniform_verified` to prevent this caveat)
+
+        Returns:
+            Array with shape [batch_size] of random items as negatives
+
+        """
         return np.random.randint(self.n_items, size=self.batch_size)
 
-    def sample_uniform_verified(self, user_inds_batch, **_):
-        """ Ensures that the neg samples are not known positives
-        Consider just using `sample_uniform` as this can be ~20x slower
+    def sample_uniform_verified(self,
+                                user_inds_batch: Sequence[int],
+                                **_):
+        """Sample negatives uniformly over entire catalog of items
+        Ensures that the neg samples are not known positives
+        Note: This can be much slower than `sample_uniform` 
+
+        Args:
+            user_inds_batch: The users of the batch
+                (used to lookup positives for verification)
+
+        Returns:
+            Array with shape [batch_size] of random items as negatives
+
         """
+
         neg_item_inds_batch = []
         for user_ind in user_inds_batch:
             user_pos_item_inds = get_row_nz(self.xn_csr, user_ind)
@@ -193,19 +242,44 @@ class PairSampler(object):
             neg_item_inds_batch.append(neg_item_ind)
         return neg_item_inds_batch
 
-    def sample_adaptive(self, user_inds_batch, pos_item_inds_batch,
-                        use_first_violation=False,
-                        nonpos_verification=False,  # TODO
+    def sample_adaptive(self,
+                        user_inds_batch: Sequence[int],
+                        pos_item_inds_batch: Sequence[int],
+                        use_first_violation: bool=False,
+                        nonpos_verification: bool=False,
                         ):
-        """
-        Uses the forward prediction of `self._model` to sample the 
-            first violating negative
-        Note: If WARP, we also return the number of samples we passed through
-         TODO: need to handle this return signature somehow
-         
-         use_first_violation: if `True`, use the first violation,
-            else, we just use the worst offender
-        nonpos_verification: if `True`, negatives will be verified as non-pos
+        """Uses the forward prediction of `self.model` to adaptively sample
+        the first, or most violating negative candidate
+        
+        Note: for true WARP [4]_ sampling, we would need to also return 
+        the number of samples it took to reach the first violation
+        (to pass into our loss function)
+
+        Args:
+            user_inds_batch: The users of the batch
+                (used to score candidate negatives)
+            pos_item_inds_batch: The positive items of the batch
+                (used to find violations -- only in the case where 
+                `use_first_violation` is True)
+            use_first_violation: If True, the sampled negative will be be the
+                first negative candidate to score over 1+score(positive). If
+                there are no such violations, the last candidate is used.
+                If False, use the worst offender
+                (negative candidate with the highest score)
+            nonpos_verification: If True, ensure that none of the negatives 
+                are actually positives
+
+        Returns:
+            Array with shape [batch_size] of random items as negatives
+
+        References:
+            .. [4] Weston, Jason, Samy Bengio, and Nicolas Usunier. "Wsabie:
+               Scaling up to large vocabulary image annotation." IJCAI.
+               Vol. 11. 2011.
+
+        Todo:
+            * Implement `nonpos_verification`
+
         """
         batch_size = len(user_inds_batch)  # NOT max_sampled
 
@@ -343,14 +417,25 @@ class PairSampler(object):
                 )
                 yield feed_pair_dict
 
-    def fwd_dicter_via_inds(self, user_inds, item_inds, fwd_d):
-        """
-        :param user_inds: Can be a single user ind or an iterable of user inds
-            If a single user ind is provided, it will be repeated 
+    def fwd_dicter_via_inds(self,
+                            user_inds: Union[int, Sequence[int]],
+                            item_inds: Sequence[int],
+                            fwd_d: Dict[int, tf.Tensor],
+                            ):
+        """Forward inference dictionary via indices of users and items
+
+        Args:
+            user_inds: Can be a single user ind or an iterable of user inds
+                If a single user ind is provided, it will be repeated 
                 for each item in `item_inds`
-        :param item_inds: Iterable of item inds
-        :param fwd_d: forward feed dict template
+            item_inds: Item indices
+            fwd_d: Dictionary of placeholders for forward inference
+
+        Returns:
+            Feed forward dictionary
+
         """
+
         if not hasattr(user_inds, '__iter__'):
             user_inds = [user_inds] * len(item_inds)
         user_feed_d = dict(zip(self.user_cols,

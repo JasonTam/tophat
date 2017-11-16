@@ -10,8 +10,13 @@ def dropcols_coo(csr_mat: sp.csr_matrix, idx_to_drop):
     idx_to_drop = np.unique(idx_to_drop)
     coo_mat = csr_mat.tocoo()
     keep = ~np.in1d(coo_mat.col, idx_to_drop)
-    coo_mat.data, coo_mat.row, coo_mat.col = coo_mat.data[keep], coo_mat.row[keep], coo_mat.col[keep]
-    coo_mat.col -= idx_to_drop.searchsorted(coo_mat.col)    # decrement column indices
+
+    coo_mat.data = coo_mat.data[keep]
+    coo_mat.row = coo_mat.row[keep]
+    coo_mat.col = coo_mat.col[keep]
+
+    # decrement column indices
+    coo_mat.col -= idx_to_drop.searchsorted(coo_mat.col)
     coo_mat._shape = (coo_mat.shape[0], coo_mat.shape[1] - len(idx_to_drop))
     return coo_mat.tocsr()
 

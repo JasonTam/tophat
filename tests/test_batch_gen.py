@@ -1,17 +1,18 @@
 import unittest
 
 import numpy as np
-from tiefrex.data import TrainDataLoader
-from tiefrex.nets import EmbeddingMap, BilinearNet, BilinearNetWithNum, BilinearNetWithNumFC
-from tiefrex.core import FactModel
-from tiefrex.config_parser import Config
+from tophat.data import TrainDataLoader
+from tophat.embedding import EmbeddingMap
+from tophat.nets import BilinearNet, BilinearNetWithNum, BilinearNetWithNumFC
+from tophat.core import FactModel
+from tophat.config_parser import Config
 
-from tiefrex import naive_sampler
+from tophat import naive_sampler
 
 
 class TestBG(unittest.TestCase):
     def setUp(self):
-        self.config = Config('tiefrex/config/config_test.py')
+        self.config = Config('config/config_test.py')
         self.train_data_loader = TrainDataLoader(self.config)
 
         self.embedding_map = EmbeddingMap(self.train_data_loader, embedding_dim=16)

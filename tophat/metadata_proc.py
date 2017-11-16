@@ -6,6 +6,18 @@ from typing import Dict, List, Any
 def write_metadata_emb(cats_d: Dict[str, List[Any]],
                        path_names_d: Dict[str, str],
                        log_dir: str) -> Dict[str, str]:
+    """Book-keeping and writing of human-readable metadata for embeddings 
+    
+    Args:
+        cats_d: Dictionary of categories
+        path_names_d: Dictionary of human-readable labels
+        log_dir: Directory to write metadata to
+            (should be the same as the log directory of checkpoints etc)
+
+    Returns:
+        Dictionary of written metadata paths 
+
+    """
     metas_written_d = {}
     for feat_name, cats in cats_d.items():
         path_out = os.path.join(log_dir, f'metadata-{feat_name}.tsv')

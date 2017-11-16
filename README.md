@@ -1,4 +1,4 @@
-# TiefRex
+# Tophat
  
 ## Running Local
 *Only* local runs are supported right now.
@@ -14,14 +14,14 @@ Build and enter Docker container. Run fit job:
 
 ```
 make cpu
-python tiefrex/fit_job.py
+python tophat/fit_job.py
 ```
 
 or
 
 ```
 make gpu
-python3.6 tiefrex/fit_job.py
+python3.6 tophat/fit_job.py
 ```
 
 Note: [nvidia-docker](github.com/NVIDIA/nvidia-docker) should be installed for 

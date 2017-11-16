@@ -1,41 +1,60 @@
-import tensorflow as tf
+from copy import deepcopy
+
 import numpy as np
 import pandas as pd
-from lib_cerebro_py.log import logger
-from tiefrex.data import load_simple_warm_cats, load_simple, TrainDataLoader
-from tiefrex.core import fwd_dict_via_ftypemeta
-from tiefrex.constants import FType
-from tiefrex.utils_pp import append_dt_extracts
-from copy import deepcopy
-from tqdm import tqdm
+import tensorflow as tf
 from collections import defaultdict
+from lib_cerebro_py.log import logger
+from tensorflow.contrib.metrics import streaming_mean, streaming_auc, \
+    streaming_sparse_average_precision_at_k
+from tqdm import tqdm
+from typing import Dict, Any, Generator, Tuple, Sequence
+
+from tophat.constants import FType
+from tophat.core import fwd_dict_via_ftypemeta
+from tophat.data import load_simple_warm_cats, load_simple, TrainDataLoader
+from tophat.utils.pp_utils import append_dt_extracts
 
 
-def items_pred_dicter(user_id, item_ids,
-                      user_cat_codes_df, item_cat_codes_df,
-                      user_num_feats_df, item_num_feats_df,
-                      input_fwd_d,
-                      context_ind=None,
-                      context_cat_codes_df=None,
-                      # context_num_feats=None,
-                      ):
-    # todo: a little redundancy with the dicters in tiefrex.core
-    """
-    Creates feeds for forward prediction for a single user    
+def items_pred_dicter(user_id: Any, item_ids: Sequence[Any],
+                      user_cat_codes_df: pd.DataFrame,
+                      item_cat_codes_df: pd.DataFrame,
+                      user_num_feats_df: pd.DataFrame,
+                      item_num_feats_df: pd.DataFrame,
+                      input_fwd_d: Dict[str, tf.Tensor],
+                      context_ind: int=None,
+                      context_cat_codes_df: pd.DataFrame=None,
+                      # context_num_feats: pd.DataFrame=None,
+                      ) -> Dict[tf.Tensor, Any]:
+    # todo: a little redundancy with the dicters in tophat.core
+    """Creates feeds for forward prediction for a single user
     Note: This does not batch within the list of items passed in
-        thus, it could be a problem with huge number of items
+    thus, it could be a problem with huge number of items
 
-    :param user_id: the particular user we are predicting for
-    :param context_ind: the particular context we are predicting under
+    Args:
+        user_id: The particular user we are predicting for
+        item_ids: Item ids to predict over
+        user_cat_codes_df: Encoded user category features 
+        item_cat_codes_df: Encoded item category features
+        user_num_feats_df: User numerical features
+        item_num_feats_df: Item numerical features
+        input_fwd_d: Dictionary of feed-forward placeholders
+        context_ind: The particular context we are predicting under
+        context_cat_codes_df: Dataframe of encoded context category features
+
+    Returns:
+        Feed dictionary to score all items for a given user under a context
+
     """
+
     n_items = len(item_ids)
 
     user_feed_d = user_cat_codes_df.loc[[user_id]].to_dict(orient='list')
     item_feed_d = item_cat_codes_df.loc[item_ids].to_dict(orient='list')
 
     # TODO: care with loc since it's a subset -- maybe just stick to iloc
-    context_feed_d = context_cat_codes_df.iloc[[context_ind]].to_dict(orient='list')\
-        if context_cat_codes_df is not None else {}
+    context_feed_d = context_cat_codes_df.iloc[[context_ind]].to_dict(
+        orient='list') if context_cat_codes_df is not None else {}
 
     # Add numerical feature if present
     if user_num_feats_df is not None:
@@ -56,13 +75,31 @@ def items_pred_dicter(user_id, item_ids,
     return feed_fwd_dict
 
 
-def items_pred_dicter_gen(user_ids, item_ids,
-                          user_cat_codes_df, item_cat_codes_df,
-                          user_num_feats_df, item_num_feats_df,
-                          input_fwd_d, ):
+def items_pred_dicter_gen(
+        user_ids: Sequence[Any],
+        item_ids: Sequence[Any],
+        user_cat_codes_df: pd.DataFrame,
+        item_cat_codes_df: pd.DataFrame,
+        user_num_feats_df: pd.DataFrame,
+        item_num_feats_df: pd.DataFrame,
+        input_fwd_d: Dict[str, tf.Tensor],
+) -> Generator[Tuple[int, Dict[tf.Tensor, Any]], None, None]:
     """Generates feeds for forward prediction for many users
-    each batch will be all items for a single user
+        each batch will be all items for a single user
+    
+    Args:
+        user_ids: User ids to predict over
+        item_ids: Item ids to predict over
+        user_cat_codes_df: Encoded user category features 
+        item_cat_codes_df: Encoded item category features
+        user_num_feats_df: User numerical features
+        item_num_feats_df: Item numerical features
+        input_fwd_d: Dictionary of feed-forward placeholders
+
+    Yields:
+        Tuple of user id, feed forward dictionary for that user 
     """
+
     for user_id in user_ids:
         yield user_id, items_pred_dicter(user_id, item_ids,
                                          user_cat_codes_df, item_cat_codes_df,
@@ -75,16 +112,35 @@ def items_pred_dicter_gen(user_ids, item_ids,
 
 
 def items_pred_dicter_gen_context(
-        interaction_df, item_ids,
-        user_cat_codes_df, item_cat_codes_df,
-        user_num_feats_df, item_num_feats_df,
-        input_fwd_d,
-        context_inds,
-        context_cat_codes_df,
+        interaction_df: pd.DataFrame,
+        item_ids: Sequence[Any],
+        user_cat_codes_df: pd.DataFrame,
+        item_cat_codes_df: pd.DataFrame,
+        user_num_feats_df: pd.DataFrame,
+        item_num_feats_df: pd.DataFrame,
+        input_fwd_d: Dict[str, tf.Tensor],
+        context_inds: Sequence[int],
+        context_cat_codes_df: pd.DataFrame,
 ):
     """Generates feeds for forward prediction for many users-contexts
     each batch will be all items for a single user-context
+
+    Args:
+        interaction_df: Interactions
+        item_ids: Item ids to predict over
+        user_cat_codes_df: Encoded user category features 
+        item_cat_codes_df: Encoded item category features
+        user_num_feats_df: User numerical features
+        item_num_feats_df: Item numerical features
+        input_fwd_d: Dictionary of feed-forward placeholders
+        context_inds: Context indices
+        context_cat_codes_df: Encoded context category features
+
+    Yields:
+        Tuple of context ind, feed forward dictionary
+        
     """
+
     def get_user_id(context_ind):
         return interaction_df['ops_user_id'].iloc[context_ind]
 
@@ -100,12 +156,18 @@ def items_pred_dicter_gen_context(
         )
 
 
-def make_metrics_ops(fwd_op, input_fwd_d):
+def make_metrics_ops(fwd_op: tf.Tensor,
+                     input_fwd_d: Dict[str, tf.Tensor]):
+    """Makes operations for calculating metrics
+    
+    Args:
+        fwd_op: Forward operation of network
+        input_fwd_d: Dictionary of feed-forward placeholders
+
+    Returns:
+        Tuple of metric operations, reset operations, and feed dictionary
     """
-    :param fwd_op: forward inference operation (typically `model.forward`) 
-    :param input_fwd_d: dict of forward placeholders
-    :return: 
-    """
+
     with tf.name_scope('placeholders_eval'):
         ph_d = {
             'y_true_ph': tf.placeholder('int64'),
@@ -117,24 +179,30 @@ def make_metrics_ops(fwd_op, input_fwd_d):
     with tf.name_scope('stream_metrics'):
         val_preds = tf.expand_dims(fwd_op(input_fwd_d), 0)
         # NB: THESE STREAMING METRICS DO **MICRO** UPDATES
-        # Ex) for AUC, it will effectively concat all predictions and all trues (over all users)
+        # Ex) for AUC, it will effectively concat all predictions and all trues
+        #   (over all users)
         # instead of averaging the AUC's over users
-        mapk, update_op_mapk = tf.contrib.metrics.streaming_sparse_average_precision_at_k(
+        mapk, update_op_mapk = streaming_sparse_average_precision_at_k(
             val_preds, ph_d['y_true_ph'], k=k)
-        auc, update_op_auc = tf.contrib.metrics.streaming_auc(
+        auc, update_op_auc = streaming_auc(
             tf.sigmoid(val_preds), ph_d['y_true_bool_ph'])
         # Tjur's Pseudo R2 inspired bpr
-        pb_t = tf.to_float(ph_d['y_true_bool_ph'], name='true_pos')
-        nb_t = tf.to_float(tf.logical_not(ph_d['y_true_bool_ph']), name='true_neg')
-        pos_mean = tf.reduce_sum(tf.multiply(pb_t, val_preds)) / tf.reduce_sum(pb_t)
-        neg_mean = tf.reduce_sum(tf.multiply(nb_t, val_preds)) / tf.reduce_sum(nb_t)
+        pb_t = tf.to_float(ph_d['y_true_bool_ph'],
+                           name='true_pos')
+        nb_t = tf.to_float(tf.logical_not(ph_d['y_true_bool_ph']),
+                           name='true_neg')
+        pos_mean = (tf.reduce_sum(tf.multiply(pb_t, val_preds)) /
+                    tf.reduce_sum(pb_t))
+        neg_mean = (tf.reduce_sum(tf.multiply(nb_t, val_preds)) /
+                    tf.reduce_sum(nb_t))
         tjurs_bpr_i = tf.subtract(1., tf.sigmoid(pos_mean - neg_mean),
                                   name='tjurs_bpr_val')
-        tjur, update_op_tjur = tf.contrib.metrics.streaming_mean(tjurs_bpr_i)
-        pm, update_op_pm = tf.contrib.metrics.streaming_mean(pos_mean)
-        nm, update_op_nm = tf.contrib.metrics.streaming_mean(neg_mean)
+        tjur, update_op_tjur = streaming_mean(tjurs_bpr_i)
+        pm, update_op_pm = streaming_mean(pos_mean)
+        nm, update_op_nm = streaming_mean(neg_mean)
 
-    stream_vars = [i for i in tf.local_variables() if i.name.split('/')[0] == 'stream_metrics']
+    stream_vars = [i for i in tf.local_variables()
+                   if i.name.split('/')[0] == 'stream_metrics']
     reset_metrics_op = [tf.variables_initializer(stream_vars)]
 
     metric_ops_d = {
@@ -162,25 +230,34 @@ def eval_things(sess,
                 context_cat_codes_df=None,
                 ):
     """
-    :param sess: tensorflow session
-    :param interactions_df: dataframe of positive interactions
-    :param user_col: name of user column
-    :param item_col: name of item column
-    :param user_ids_val: user_ids to evaluate
-    :param item_ids: item_ids in catalog to consider
-    :param user_cat_codes_df: user feature codes
-    :param item_cat_codes_df: item feature codes
-    :param user_num_feats_df: user numerical features
-    :param item_num_feats_df: item numerical features
-    :param input_fwd_d: forward feed dictionary
-    :param metric_ops_d: dictionary of metric operations
-    :param reset_metrics_op: reset operation for streaming metrics
-    :param eval_ph_d: dictionary of placeholder for evaluation
-    :param n_users_eval: max number of users to evaluate
-        (if evaluation is too slow to consider all users in `user_ids_val`)
-    :param summary_writer: optional summary writer
-    :param step: optional global step for summary
+    
+    Args:
+        sess: Tensorflow session
+        interactions_df: Validation interactions
+        user_col: Name of user column
+        item_col: Name of item column
+        user_ids_val: User ids to evaluate over
+        item_ids: Item ids to evaluate over
+        user_cat_codes_df: Encoded user category features 
+        item_cat_codes_df: Encoded item category features
+        user_num_feats_df: User numerical features
+        item_num_feats_df: Item numerical features
+        input_fwd_d: Dictionary of feed-forward placeholders
+        metric_ops_d: Metric operations
+        reset_metrics_op: Reset operation for streaming metrics
+        eval_ph_d: Placeholders for evaluation
+        n_users_eval: Max number of users to evaluate 
+            (if evaluation is too slow to consider all users in `user_ids_val`)
+        summary_writer: Summary writer object
+        step: Global step for summary
+        model: 
+        inds: 
+        context_cat_codes_df: 
+
+    Returns:
+
     """
+
     sess.run(tf.local_variables_initializer())
     sess.run(reset_metrics_op)
     # use the same users for every eval step
@@ -317,25 +394,29 @@ def eval_things_context(
 
 
 class Validator(object):
+    """Convenience validation object with various book-keeping
+    
+    Args:
+        config: 
+        train_data_loader: Training data object
+        limit_items: Limits the number of items in catalog to predict over
+            -1 for all items (from train and val)
+            0 for only val items
+            n for n (from training catalog) + val items
+        n_users_eval: Number of users to evaluate
+        include_cold: If `True`, includes unseen items in validation
+        cold_only: If `True`, will evaluate only the set of unseen items
+        n_xns_as_cold: threshold on the number of interactions an items must 
+            have less than to be considered a cold item 
+            (typically 0, but some literature uses a nonzero value ex.5)
+        seed: seed for random state
+    """
+
     def __init__(self, config, train_data_loader: TrainDataLoader,
                  limit_items=-1, n_users_eval=200,
                  include_cold=True, cold_only=False, n_xns_as_cold=5,
                  seed: int=0):
-        """
-        :param limit_items: limits the number of items in catalog to predict over
-            -1 for all items (from train and val)
-            0 for only val items
-            n for n (from training catalog) + val items
-        :param n_users_eval: number of users to evaluate
-        :param include_cold: if `True`, includes unseen items in validation
-        :param cold_only: if `True`, will evaluate only the set of unseen items
-        :param n_xns_as_cold: threshold on the number of interactions an items must have less than
-            to be considered a cold item (typically 0, but some literature uses a nonzero value ex.5)
-            # TODO: WIP
-        Note: this will modify `train_data_loader` in-place
-            with additional unseen users/items
-            be careful
-        """
+
         self.seed = seed
         np.random.seed(self.seed)
 
@@ -345,6 +426,11 @@ class Validator(object):
         self.n_users_eval = n_users_eval
 
         self.input_fwd_d = None
+
+        self.model = None
+        self.metric_ops_d = None
+        self.reset_metrics_op = None
+        self.eval_ph_d = None
 
         train_item_counts = train_data_loader.interactions_df.groupby(train_data_loader.item_col).size()
         warm_items = set(train_item_counts.loc[train_item_counts >= n_xns_as_cold].index)
@@ -364,7 +450,8 @@ class Validator(object):
                 self.interactions_df = self.interactions_df.loc[
                     ~self.interactions_df[self.item_col_val].isin(warm_items)]
 
-            append_dt_extracts(self.interactions_df, train_data_loader.context_cat_cols,
+            append_dt_extracts(self.interactions_df,
+                               train_data_loader.context_cat_cols,
                                self.cats_d)
 
             # TODO: same as TrainDataLoader.make_feat_codes()
@@ -379,7 +466,6 @@ class Validator(object):
             self.context_cat_codes_df = self.interactions_df[train_data_loader.context_cat_cols].copy()
             for col in self.context_cat_codes_df.columns:
                 self.context_cat_codes_df[col] = self.context_cat_codes_df[col].cat.codes
-
 
             # Process numerical metadata
             # TODO: assuming numerical features aggregated into 1 table for now
