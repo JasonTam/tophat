@@ -36,6 +36,17 @@ class FeatureSource(object):
 
         self.data = None
 
+    def __str__(self):
+        return f'FeatureSource({self.name})'
+
+    def __repr__(self):
+        return '<%s.%s (%s) at %s>' % (
+            self.__class__.__module__,
+            self.__class__.__name__,
+            self.path,
+            hex(id(self))
+        )
+
     def load(self, force_reload=False):
         if not (force_reload or self.data is None):
             logger.info('Already loaded')
@@ -93,6 +104,17 @@ class InteractionsSource(object):
         self.date_lookforward = date_lookforward
 
         self.data = None
+
+    def __str__(self):
+        return f'InteractionsSource({self.path})'
+
+    def __repr__(self):
+        return '<%s.%s (%s) at %s>' % (
+            self.__class__.__module__,
+            self.__class__.__name__,
+            self.path,
+            hex(id(self))
+        )
 
     def load(self):
         if self.data is not None:
