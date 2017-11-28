@@ -68,6 +68,7 @@ class FitJob(object):
         self.embedding_map = EmbeddingMap(
             self.train_data_loader,
             embedding_dim=self.emb_dim,
+            l2_emb=0.,
             zero_init_rows=zero_init_rows,
             vis_specific_embs=False,
             feature_weights_d=self.fit_config.get('feature_weights_d'),
@@ -198,9 +199,22 @@ if __name__ == '__main__':
     parser.add_argument('environment', help='Run environment',
                         default='local', nargs='?',
                         choices=['local', 'integ', 'prod'])
+    parser.add_argument('--log_tag', help='Append this tag to the log dir',
+                        default='', nargs='?',)
+    parser.add_argument('--log_overwrite',
+                        help='Overwrite log dir',
+                        action='store_true',)
+
     args = parser.parse_args()
     logger.info(pprint.pformat(args))
     config = Config(f'config/fit_config-{args.environment}.py')
+
+    config.__dict__['_params']['log_dir'] += args.log_tag
+
+    if args.log_overwrite:
+        import shutil
+        shutil.rmtree(config.get('log_dir'))
+
     logger.info(pprint.pformat(config._params))
 
     job = FitJob(fit_config=config)

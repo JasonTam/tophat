@@ -14,6 +14,7 @@ RUN pip install tensorflow==1.3.0
 RUN apt-get purge -y --auto-remove gcc g++ build-essential
 
 ADD tophat /opt/cerebro-deep-rec-engine/tophat
+ADD config /opt/cerebro-deep-rec-engine/config
 ENV PYTHONPATH=$PYTHONPATH:/opt/cerebro-deep-rec-engine/tophat
 RUN mkdir /tmp/tensorboard-logs
 ADD bin/run.sh bin/run.sh
