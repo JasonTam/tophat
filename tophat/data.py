@@ -152,12 +152,26 @@ class TrainDataLoader(object):
     training data
 
     Args:
-        config: dictionary of various params
+        interactions_train: training interactions source
+        user_features: user feature sources
+        item_features: item feature sources
+        user_specific_feature: include the user-specific feature
+        item_specific_feature: include the item-specific feature
+        context_cols: columns to consider interaction context
+        batch_size: batch size
     """
 
-    def __init__(self, config):  # TODO: config --> should be explicit args?
-        self.batch_size = config.get('batch_size')
-        interactions_train = config.get('train_interactions')
+    def __init__(self,
+                 interactions_train: InteractionsSource,
+                 user_features: Optional[Iterable[FeatureSource]],
+                 item_features: Optional[Iterable[FeatureSource]],
+                 user_specific_feature: bool=True,
+                 item_specific_feature: bool=True,
+                 context_cols: Optional[Iterable[str]]=None,
+                 batch_size: int=128,
+                 ):
+
+        self.batch_size = batch_size
         self.activity_col = interactions_train.activity_col
         self.user_col = interactions_train.user_col
         self.item_col = interactions_train.item_col
@@ -172,10 +186,10 @@ class TrainDataLoader(object):
         self.interactions_df, self.user_feats_d, self.item_feats_d = \
             load_simple(
                 interactions_train,
-                config.get('user_features'),
-                config.get('item_features'),
-                config.get('user_specific_feature'),
-                config.get('item_specific_feature'),
+                user_features,
+                item_features,
+                user_specific_feature,
+                item_specific_feature,
             )
 
         # Process Categorical
@@ -198,7 +212,7 @@ class TrainDataLoader(object):
             self.cats_d[self.item_col] = self.interactions_df[self.item_col]\
                 .cat.categories.tolist()
 
-        self.context_cat_cols = config.get('context_cols') or []
+        self.context_cat_cols = context_cols or []
         if self.context_cat_cols:
             append_dt_extracts(self.interactions_df, self.context_cat_cols)
             for col in self.context_cat_cols:

@@ -29,7 +29,15 @@ tf.gfile.MkDir(LOG_DIR)
 
 
 def run():
-    train_data_loader = TrainDataLoader(config)
+    train_data_loader = TrainDataLoader(
+        interactions_train=config.get('interactions_train'),
+        user_features=config.get('user_features'),
+        item_features=config.get('item_features'),
+        user_specific_feature=config.get('user_specific_feature'),
+        item_specific_feature=config.get('item_specific_feature'),
+        context_cols=config.get('context_cols'),
+        batch_size=config.get('batch_size'),
+    )
     # will modify `train_data_loader` in-place
     validator = Validator(config, train_data_loader,
                           limit_items=-1, n_users_eval=500,
@@ -51,9 +59,12 @@ def run():
     local_data_dir = os.path.join(
         os.path.dirname(os.path.realpath(__file__)), '../data/amazon/')
 
-    path_gamma_user = os.path.join(local_data_dir, 'ruining_weights/BPR/gamma_user_df.msg')
-    path_gamma_item = os.path.join(local_data_dir, 'ruining_weights/BPR/gamma_item_df.msg')
-    path_beta_item = os.path.join(local_data_dir, 'ruining_weights/BPR/beta_item_df.msg')
+    path_gamma_user = os.path.join(local_data_dir,
+                                   'ruining_weights/BPR/gamma_user_df.msg')
+    path_gamma_item = os.path.join(local_data_dir,
+                                   'ruining_weights/BPR/gamma_item_df.msg')
+    path_beta_item = os.path.join(local_data_dir,
+                                  'ruining_weights/BPR/beta_item_df.msg')
 
     gamma_user_df = pd.read_msgpack(path_gamma_user)
     gamma_item_df = pd.read_msgpack(path_gamma_item)
@@ -62,9 +73,11 @@ def run():
     user_index = model.net.embedding_map.cats_d['reviewerID']
     item_index = model.net.embedding_map.cats_d['asin']
 
-    gamma_user_w = gamma_user_df.loc[user_index].fillna(0.).values.astype('float32')
-    gamma_item_w = gamma_item_df.loc[item_index].fillna(0.).values.astype('float32')
-    beta_item_w = beta_item_df.loc[item_index].fillna(0.).values.astype('float32')
+    get_f32_val = lambda x: x.fillna(0.).values.astype('float32')
+
+    gamma_user_w = get_f32_val(gamma_user_df.loc[user_index])
+    gamma_item_w = get_f32_val(gamma_item_df.loc[item_index])
+    beta_item_w = get_f32_val(beta_item_df.loc[item_index])
 
     # Remake the embeddings with predefined weights
     model.net.embedding_map.embeddings_d['reviewerID'] = tf.get_variable(
@@ -94,7 +107,9 @@ def run():
         saver = tf.train.Saver()
         summary_writer = tf.summary.FileWriter(
             LOG_DIR, graph=tf.get_default_graph())
-        embedding_projector = EmbeddingProjector(embedding_map, summary_writer, config)
+        embedding_projector = EmbeddingProjector(embedding_map,
+                                                 summary_writer,
+                                                 config)
 
         summary_writer.flush()
         tic = time()
@@ -110,8 +125,10 @@ def run():
     # not exactly equal because we don't assert the same 500 users
     # see notebook for source of desired values
     # (500 users, limit -1 items, include cold, not cold only)
-    np.testing.assert_almost_equal(np.mean(scores_d['auc']), 0.717719806398, decimal=2)
-    np.testing.assert_almost_equal(np.std(scores_d['auc']), 0.2981886522559542, decimal=2)
+    np.testing.assert_almost_equal(np.mean(scores_d['auc']),
+                                   0.717719806398, decimal=2)
+    np.testing.assert_almost_equal(np.std(scores_d['auc']),
+                                   0.2981886522559542, decimal=2)
 
     return True
 

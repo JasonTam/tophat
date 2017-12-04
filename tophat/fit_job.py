@@ -52,7 +52,15 @@ class FitJob(object):
         self.validator: Validator = None
 
     def model_init(self):
-        self.train_data_loader = TrainDataLoader(self.fit_config)
+        self.train_data_loader = TrainDataLoader(
+            interactions_train=self.fit_config.get('interactions_train'),
+            user_features=self.fit_config.get('user_features'),
+            item_features=self.fit_config.get('item_features'),
+            user_specific_feature=self.fit_config.get('user_specific_feature'),
+            item_specific_feature=self.fit_config.get('item_specific_feature'),
+            context_cols=self.fit_config.get('context_cols'),
+            batch_size=self.fit_config.get('batch_size'),
+        )
         if self.fit_config.get('validation_params'):
             self.validator = Validator(
                 self.fit_config, self.train_data_loader,

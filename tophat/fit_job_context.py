@@ -31,7 +31,15 @@ tf.gfile.MkDir(LOG_DIR)
 
 
 def run():
-    train_data_loader = TrainDataLoader(config)
+    train_data_loader = TrainDataLoader(
+        interactions_train=config.get('interactions_train'),
+        user_features=config.get('user_features'),
+        item_features=config.get('item_features'),
+        user_specific_feature=config.get('user_specific_feature'),
+        item_specific_feature=config.get('item_specific_feature'),
+        context_cols=config.get('context_cols'),
+        batch_size=config.get('batch_size'),
+    )
     validator = Validator(config, train_data_loader,
                           limit_items=-1, n_users_eval=500,
                           include_cold=False, cold_only=False)

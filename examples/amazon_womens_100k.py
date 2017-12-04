@@ -25,7 +25,15 @@ save_every = 50000
 
 def run(config):
     batch_size = config.get('batch_size')
-    train_data_loader = TrainDataLoader(config)
+    train_data_loader = TrainDataLoader(
+        interactions_train=config.get('interactions_train'),
+        user_features=config.get('user_features'),
+        item_features=config.get('item_features'),
+        user_specific_feature=config.get('user_specific_feature'),
+        item_specific_feature=config.get('item_specific_feature'),
+        context_cols=config.get('context_cols'),
+        batch_size=config.get('batch_size'),
+    )
     validator = Validator(config, train_data_loader,
                           limit_items=40000, n_users_eval=500,
                           include_cold=True, cold_only=False, n_xns_as_cold=5)

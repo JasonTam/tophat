@@ -420,7 +420,7 @@ class Validator(object):
         self.seed = seed
         np.random.seed(self.seed)
 
-        interactions_val = config.get('val_interactions')
+        interactions_val = config.get('interactions_val')
         self.user_col_val = interactions_val.user_col
         self.item_col_val = interactions_val.item_col
         self.n_users_eval = n_users_eval
