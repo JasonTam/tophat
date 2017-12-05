@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from time import time
 import pickle
+import json
 
 import os
 import glob
@@ -22,7 +23,7 @@ import pprint
 
 
 class FitJob(object):
-    def __init__(self, fit_config):
+    def __init__(self, fit_config: Config):
         self.fit_config = fit_config
 
         self.emb_dim = fit_config.get('emb_dim')
@@ -35,6 +36,7 @@ class FitJob(object):
         tf.set_random_seed(self.seed)
 
         # Some export stuff
+        self.config_export_path = fit_config.get('config_export_path')
         self.ckpt_upload_s3_uri = fit_config.get('ckpt_upload_s3_uri')
         # TODO: maybe have an `export_config`
         self.repr_export_path = fit_config.get('repr_export_path')
@@ -166,7 +168,7 @@ class FitJob(object):
     def upload_ckpt(self):
         # Upload LOG_DIR to s3 path if applicable
         if self.ckpt_upload_s3_uri:
-            logger.info(f'uploading ckpts to {self.ckpt_upload_s3_uri}...')
+            logger.info(f'Uploading ckpts to {self.ckpt_upload_s3_uri}...')
             from lib_cerebro_py.aws.aws_s3_object import AwsS3Object
             for p in glob.glob(os.path.join(self.log_dir, '**')):
                 if p.startswith('events'):
@@ -176,7 +178,17 @@ class FitJob(object):
                     p.split(self.log_dir)[-1].strip('/'))
                 o = AwsS3Object(path_upload)
                 o.upload_file(p)
-            logger.info(f'...uploaded ckpts to {self.ckpt_upload_s3_uri}')
+            logger.info(f'...Uploaded ckpts to {self.ckpt_upload_s3_uri}')
+
+    def upload_cfg(self):
+        """Upload the fit config file as json"""
+        # TODO: kind of ugly
+        if self.config_export_path:
+            from lib_cerebro_py.aws.aws_s3_object import AwsS3Object
+            logger.info(f'Uploading config to {self.config_export_path}...')
+            o = AwsS3Object(self.config_export_path)
+            o.upload_string(json.dumps(self.fit_config.to_dict()))
+            logger.info(f'...Uploaded config to {self.config_export_path}')
 
     def export_reprs(self):
         """ Wrapper for Representation Export Job"""
@@ -197,6 +209,7 @@ class FitJob(object):
         self.model_fit()
         self.upload_ckpt()
         self.export_reprs()
+        self.upload_cfg()
 
         return True
 
