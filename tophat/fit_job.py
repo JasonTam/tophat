@@ -76,16 +76,21 @@ class FitJob(object):
         else:
             zero_init_rows = None
         self.embedding_map = EmbeddingMap(
-            self.train_data_loader,
+            cats_d=self.train_data_loader.cats_d,
+            user_cat_cols=self.train_data_loader.user_cat_cols,
+            item_cat_cols=self.train_data_loader.item_cat_cols,
+            context_cat_cols=self.train_data_loader.context_cat_cols,
             embedding_dim=self.emb_dim,
             l2_emb=0.,
             zero_init_rows=zero_init_rows,
-            vis_specific_embs=False,
             feature_weights_d=self.fit_config.get('feature_weights_d'),
+            vis_emb_user_col=None,
         )
 
-        self.model = FactModel(net=BilinearNet(
-            embedding_map=self.embedding_map)
+        self.model = FactModel(
+            net=BilinearNet(
+                embedding_map=self.embedding_map),
+            batch_size=self.batch_size,
         )
 
         # Save the catalog
@@ -97,7 +102,7 @@ class FitJob(object):
 
         # Sample Generator
         logger.info('Setting up local sampler ...')
-        self.sampler = PairSampler(
+        self.sampler = PairSampler.from_data_loader(
             self.train_data_loader,
             self.model.input_pair_d,
             self.batch_size,
@@ -216,7 +221,7 @@ class FitJob(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Fit a tiefRex model from scratch')
+        description='Fit a tophat model from scratch')
     parser.add_argument('environment', help='Run environment',
                         default='local', nargs='?',
                         choices=['local', 'integ', 'prod'])

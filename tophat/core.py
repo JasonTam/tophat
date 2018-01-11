@@ -8,12 +8,14 @@ class FactModel(object):
 
     Args:
         net: Prediction network
+        batch_size: Batch size for fitting
         optimizer: Training optimizer object
         seed: Seed for random state
     """
 
     def __init__(self,
                  net,
+                 batch_size,
                  optimizer: tf.train.Optimizer = tf.train.AdamOptimizer(
                      learning_rate=0.001),
                  seed=SEED,
@@ -21,6 +23,7 @@ class FactModel(object):
 
         self.seed = seed
         self.net = net
+        self.batch_size = batch_size
         self.optimizer = optimizer
         self.input_pair_d: Dict[str, tf.Tensor] = None
 
@@ -29,7 +32,7 @@ class FactModel(object):
         # Make Placeholders according to our cats
         with tf.name_scope('placeholders'):
             self.input_pair_d = self.get_pair_dict(
-                self.net.embedding_map.data_loader.batch_size)
+                self.batch_size)
 
     def get_fwd_dict(self, batch_size: int=None):
         """Gets the placeholders required for the forward prediction of a

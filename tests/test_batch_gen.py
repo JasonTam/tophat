@@ -30,7 +30,7 @@ class TestBG(unittest.TestCase):
             embedding_map=self.embedding_map,
             num_meta=self.train_data_loader.num_meta)
         )
-        self.batch_size = self.model.net.embedding_map.data_loader.batch_size
+        self.batch_size = self.config.get('batch_size')
         self.sampler = naive_sampler.PairSampler(
             self.train_data_loader,
             self.model.input_pair_d,

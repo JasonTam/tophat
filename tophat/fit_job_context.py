@@ -46,29 +46,24 @@ def run():
 
     # Ops and feature map
     logger.info('Building graph ...')
-    embedding_map = EmbeddingMap(train_data_loader, embedding_dim=EMB_DIM,
-                                 zero_init_rows=validator.zero_init_rows,
-                                 vis_specific_embs=False,
-                                 feature_weights_d=config.get('feature_weights_d'),
-                                 )
+    embedding_map = EmbeddingMap(
+        cats_d=train_data_loader.cats_d,
+        user_cat_cols=train_data_loader.user_cat_cols,
+        item_cat_cols=train_data_loader.item_cat_cols,
+        context_cat_cols=train_data_loader.context_cat_cols,
+        embedding_dim=EMB_DIM,
+        zero_init_rows=validator.zero_init_rows,
+        feature_weights_d=config.get('feature_weights_d'),
+        vis_emb_user_col=None,
+    )
 
     model = FactModel(
         net=BilinearNet(
             embedding_map=embedding_map,
             interaction_type=config.get('interaction_type')
-        )
+        ),
+        batch_size=train_data_loader.batch_size,
     )
-    # model = FactModel(net=BilinearNetWithNum(
-    #     embedding_map=embedding_map,
-    #     interaction_type=config.get('interaction_type'),
-    #     num_meta=train_data_loader.num_meta),
-    #
-    # )
-    # model = FactModel(net=BilinearNetWithNumFC(
-    #     embedding_map=embedding_map,
-    #     interaction_type=config.get('interaction_type'),
-    #     num_meta=train_data_loader.num_meta)
-    # )
 
     loss = model.get_loss()
     train_op = model.training(loss)
@@ -76,7 +71,7 @@ def run():
 
     # Sample Generator
     logger.info('Setting up local sampler ...')
-    sampler = naive_sampler.PairSampler(
+    sampler = naive_sampler.PairSampler.from_data_loader(
         train_data_loader,
         model.input_pair_d,
         batch_size,

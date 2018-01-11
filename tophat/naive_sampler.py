@@ -4,6 +4,7 @@ Implements a generator for basic uniform random sampling of negative items
 import sys
 
 import numpy as np
+import pandas as pd
 import scipy.sparse as sp
 import tensorflow as tf
 from typing import Dict, Iterable, Sized, Sequence, Optional
@@ -86,7 +87,7 @@ class PairSampler(object):
     negative sampling
 
     Args:
-        train_data_loader: Training data object
+        
         input_pair_d: Dictionary of placeholders keyed by name
         batch_size: Batch size
         shuffle: If `True`, batches will be sampled from a shuffled index
@@ -97,10 +98,14 @@ class PairSampler(object):
         method: Negative sampling method
         model: Optional model for adaptive sampling
         seed: Seed for random state
-
+        train_data_loader: Training data object
     """
     def __init__(self,
-                 train_data_loader: TrainDataLoader,
+                 interactions_df: pd.DataFrame,
+                 cols_d: Dict[str, str],
+                 cats_d: Dict[str, List],
+                 feat_codes_df_d: Dict[str, pd.DataFrame],
+                 feats_d_d: Dict[str, Dict[FType, pd.DataFrame]],
                  input_pair_d: Dict[str, tf.Tensor],
                  batch_size: int=1024,
                  shuffle: bool=True,
@@ -114,32 +119,28 @@ class PairSampler(object):
         self.seed = seed
         np.random.seed(self.seed)
 
-        interactions_df = train_data_loader.interactions_df
-        user_col = train_data_loader.user_col
-        item_col = train_data_loader.item_col
+        interactions_df = interactions_df
+        user_col = cols_d['user']
+        item_col = cols_d['item']
 
         # Index alignment
-        user_feats_codes_df = train_data_loader.user_feats_codes_df.loc[
-            train_data_loader.cats_d[train_data_loader.user_col]]
-        item_feats_codes_df = train_data_loader.item_feats_codes_df.loc[
-            train_data_loader.cats_d[train_data_loader.item_col]]
+        user_feats_codes_df = feat_codes_df_d['user'].loc[cats_d[user_col]]
+        item_feats_codes_df = feat_codes_df_d['item'].loc[cats_d[item_col]]
 
         # TODO: some switch for context existence
         # context features are already aligned with `interaction_df`
         #   by construction
-        context_feat_codes_df = train_data_loader.context_feats_codes_df
+        context_feat_codes_df = feat_codes_df_d.get('context')
 
         # Grab underlying numerical feature array(s)
         self.user_num_feats_arr = None
         self.item_num_feats_arr = None
-        if FType.NUM in train_data_loader.user_feats_d:
-            self.user_num_feats_arr = train_data_loader.\
-                user_feats_d[FType.NUM].loc[train_data_loader.cats_d[
-                    train_data_loader.user_col]].values
-        if FType.NUM in train_data_loader.item_feats_d:
-            self.item_num_feats_arr = train_data_loader.\
-                item_feats_d[FType.NUM].loc[train_data_loader.cats_d[
-                    train_data_loader.item_col]].values
+        if feats_d_d and FType.NUM in feats_d_d['user']:
+            self.user_num_feats_arr = feats_d_d['user'][FType.NUM].loc[cats_d[
+                    user_col]].values
+        if feats_d_d and FType.NUM in feats_d_d['item']:
+            self.item_num_feats_arr = feats_d_d['item'][FType.NUM].loc[cats_d[
+                    item_col]].values
         # TODO: NUM not supported for context right now
 
         self.method = method
@@ -199,6 +200,45 @@ class PairSampler(object):
             self.neg_fwd_op = self._model.forward(self.neg_fwd_d)
 
         self.sess = None
+
+    @classmethod
+    def from_data_loader(cls,
+                         train_data_loader: TrainDataLoader,
+                         input_pair_d: Dict[str, tf.Tensor],
+                         batch_size: int=1024,
+                         shuffle: bool=True,
+                         n_epochs: int=-1,
+                         uniform_users: bool=False,
+                         method: str='uniform',
+                         model=None,
+                         seed: int=0,
+                         ):
+        return cls(
+            interactions_df=train_data_loader.interactions_df,
+            cols_d={
+                'user': train_data_loader.user_col,
+                'item': train_data_loader.item_col,
+            },
+            cats_d=train_data_loader.cats_d,
+            feat_codes_df_d={
+                'user': train_data_loader.user_feats_codes_df,
+                'item': train_data_loader.item_feats_codes_df,
+                'context': train_data_loader.context_feats_codes_df,
+            },
+            feats_d_d={
+                'user': train_data_loader.user_feats_d,
+                'item': train_data_loader.item_feats_d,
+            },
+            input_pair_d=input_pair_d,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            n_epochs=n_epochs,
+            uniform_users=uniform_users,
+            method=method,
+            model=model,
+            seed=seed,
+        )
+
 
     def __iter__(self):
         if self.uniform_users:

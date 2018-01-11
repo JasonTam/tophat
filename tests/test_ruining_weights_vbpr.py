@@ -46,13 +46,21 @@ def run():
 
     # Ops and feature map
     logger.info('Building graph ...')
-    embedding_map = EmbeddingMap(train_data_loader, embedding_dim=EMB_DIM,
-                                 zero_init_rows=validator.zero_init_rows,
-                                 )
+    embedding_map = EmbeddingMap(
+        cats_d=train_data_loader.cats_d,
+        user_cat_cols=train_data_loader.user_cat_cols,
+        item_cat_cols=train_data_loader.item_cat_cols,
+        context_cat_cols=train_data_loader.context_cat_cols,
+        embedding_dim=EMB_DIM,
+        zero_init_rows=validator.zero_init_rows,
+        vis_emb_user_col=train_data_loader.user_col,
+    )
 
-    model = FactModel(net=BilinearNetWithNum(
-        embedding_map=embedding_map,
-        num_meta=train_data_loader.num_meta)
+    model = FactModel(
+        net=BilinearNetWithNum(
+            embedding_map=embedding_map,
+            num_meta=train_data_loader.num_meta),
+        batch_size=train_data_loader.batch_size,
     )
     # ------------------
 

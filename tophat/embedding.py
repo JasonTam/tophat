@@ -3,25 +3,31 @@ import numpy as np
 from tensorflow.contrib.tensorboard.plugins import projector
 from tophat.data import TrainDataLoader
 from tophat.metadata_proc import write_metadata_emb
-from typing import Iterable, Dict, Tuple
+from typing import Iterable, Dict, Tuple, Optional, List
 from collections import defaultdict
 
 
 class EmbeddingMap(object):
     def __init__(self,
-                 data_loader: TrainDataLoader,
+                 cats_d: Dict[str, List[str]],
+                 user_cat_cols: Iterable[str],
+                 item_cat_cols: Iterable[str],
+                 context_cat_cols: Iterable[str],
                  embedding_dim: int=16,
                  l2_bias: float=0.,
                  l2_emb: float=0.,
                  seed=322,
                  zero_init_rows: Dict[str, Iterable[int]]=None,
-                 vis_specific_embs=True,
                  feature_weights_d: Dict[str, float]=None,
+                 vis_emb_user_col: Optional[str]=None,
                  ):
         """Convenience container for embedding layers
         
         Args:
-            data_loader: Data loader object
+            cats_d: Dictionary of categories
+            user_cat_cols: Name of user categorical feature columns
+            item_cat_cols: Name of item categorical feature columns
+            context_cat_cols: Name of context categorical feature columns
             embedding_dim: Size of embedding dimension
                 (number of latent factors)
             l2_bias: l2 regularization scale for bias
@@ -37,17 +43,17 @@ class EmbeddingMap(object):
                     sample negative :(
                     (this is only done on embs since biases are initialized 
                     with 0 anyway)
-            vis_specific_embs: If True, give users an additional 
-                visual-specific embedding
             feature_weights_d: Feature weights by name
+            vis_emb_user_col: If provided, give users an additional
+                visual-specific embedding (the value of the argument will 
+                denote the name of the user column)
         """
 
         self.seed = seed
-        self.data_loader = data_loader
-        self.cats_d = data_loader.cats_d
-        self.user_cat_cols = data_loader.user_cat_cols
-        self.item_cat_cols = data_loader.item_cat_cols
-        self.context_cat_cols = data_loader.context_cat_cols
+        self.cats_d = cats_d
+        self.user_cat_cols = user_cat_cols
+        self.item_cat_cols = item_cat_cols
+        self.context_cat_cols = context_cat_cols
 
         self.l2_bias = l2_bias
         self.l2_emb = l2_emb
@@ -97,14 +103,14 @@ class EmbeddingMap(object):
             }
 
         # TODO: numerical specific factors for user (theta_u)
-        self.vis_specific_embs = vis_specific_embs
-        if self.vis_specific_embs:
+        self.vis_emb_user_col = vis_emb_user_col
+        if self.vis_emb_user_col:
             K2 = self.embedding_dim
             with tf.variable_scope('visual'):
                 self.user_vis = tf.get_variable(  # vbpr: theta_u
                     name='user_vis',
                     # have K' = K (n_visual_factors = n_factors)
-                    shape=[len(self.cats_d[data_loader.user_col]), K2],
+                    shape=[len(self.cats_d[self.vis_emb_user_col]), K2],
                     initializer=tf.random_normal_initializer(
                         mean=0., stddev=1. / K2, seed=self.seed),
                     regularizer=self.reg_emb,
@@ -198,7 +204,7 @@ class EmbeddingProjector(object):
 
         self.summary_writer = summary_writer
         feat_to_metapath = write_metadata_emb(
-            embedding_map.data_loader.cats_d,
+            embedding_map.cats_d,
             config.get('names'),
             config.get('log_dir'))
 

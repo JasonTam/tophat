@@ -152,10 +152,10 @@ class BilinearNetWithNum(BilinearNet):
         embeddings_user, embeddings_item, embeddings_context, biases = \
             self.embedding_map.look_up(
             input_xn_d)
-        if self.embedding_map.vis_specific_embs:
+        if self.embedding_map.vis_emb_user_col:
             emb_user_vis = tf.nn.embedding_lookup(
                 self.embedding_map.user_vis,
-                input_xn_d[self.embedding_map.data_loader.user_col],
+                input_xn_d[self.embedding_map.vis_emb_user_col],
                 name='user_vis_emb')
         else:
             emb_user_vis = None

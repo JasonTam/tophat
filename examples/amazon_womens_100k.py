@@ -40,17 +40,24 @@ def run(config):
 
     # Ops and feature map
     logger.info('Building graph ...')
-    embedding_map = EmbeddingMap(train_data_loader, embedding_dim=EMB_DIM,
-                                 zero_init_rows=validator.zero_init_rows,
-                                 l2_bias=0., l2_emb=1e-4,
-                                 vis_specific_embs=True,
-                                 )
+    embedding_map = EmbeddingMap(
+        cats_d=train_data_loader.cats_d,
+        user_cat_cols=train_data_loader.user_cat_cols,
+        item_cat_cols=train_data_loader.item_cat_cols,
+        context_cat_cols=train_data_loader.context_cat_cols,
+        embedding_dim=EMB_DIM,
+        zero_init_rows=validator.zero_init_rows,
+        l2_bias=0., l2_emb=1e-4,
+        vis_emb_user_col=train_data_loader.user_col,
+    )
 
-    model = FactModel(net=BilinearNetWithNum(
-        embedding_map=embedding_map,
-        num_meta=train_data_loader.num_meta,
-        l2_vis=0.,
-        ruin=True)
+    model = FactModel(
+        net=BilinearNetWithNum(
+            embedding_map=embedding_map,
+            num_meta=train_data_loader.num_meta,
+            l2_vis=0.,
+            ruin=True),
+        batch_size=batch_size,
     )
 
     loss = model.get_loss()
@@ -59,7 +66,7 @@ def run(config):
 
     # Sample Generator
     logger.info('Setting up local sampler ...')
-    sampler = naive_sampler.PairSampler(
+    sampler = naive_sampler.PairSampler.from_data_loader(
         train_data_loader,
         model.input_pair_d,
         batch_size=batch_size,
