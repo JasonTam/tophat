@@ -1,5 +1,6 @@
 # some repeat between this and lightfm-shenanigans repo
 
+import argparse
 import fastavro as avro
 import os
 import pandas as pd
@@ -14,6 +15,7 @@ from lib_cerebro_py.aws.aws_s3_object import AwsS3Object
 from lib_cerebro_py.log import logger
 from tophat.convenience import import_pickle
 from typing import Iterator, Dict, Any, List
+import pprint
 
 
 def rec_generator(df: pd.DataFrame,
@@ -200,7 +202,16 @@ class FactorExportJob(object):
 
 
 if __name__ == '__main__':
-    config = Config('config/export_config-prod.py')
+    parser = argparse.ArgumentParser(
+        description='Export factors from a checkpointed tophat model')
+    parser.add_argument('environment', help='Run environment',
+                        default='prod', nargs='?',
+                        choices=['integ', 'prod'])
+
+    args = parser.parse_args()
+    logger.info(pprint.pformat(args))
+    config = Config(f'config/export_config_{args.environment}.py')
+
     job = FactorExportJob(
         config.get('path_cats'),
         config.get('path_meta'),

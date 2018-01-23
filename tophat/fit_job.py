@@ -233,7 +233,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     logger.info(pprint.pformat(args))
-    config = Config(f'config/fit_config-{args.environment}.py')
+    config = Config(f'config/fit_config_{args.environment}.py')
 
     config.__dict__['_params']['log_dir'] += args.log_tag
 
