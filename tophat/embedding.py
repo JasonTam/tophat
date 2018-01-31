@@ -14,7 +14,9 @@ class EmbeddingMap(object):
                  item_cat_cols: Iterable[str],
                  context_cat_cols: Iterable[str],
                  embedding_dim: int=16,
+                 l1_bias: float=0.,
                  l2_bias: float=0.,
+                 l1_emb: float=0.,
                  l2_emb: float=0.,
                  seed=322,
                  zero_init_rows: Dict[str, Iterable[int]]=None,
@@ -30,6 +32,10 @@ class EmbeddingMap(object):
             context_cat_cols: Name of context categorical feature columns
             embedding_dim: Size of embedding dimension
                 (number of latent factors)
+            l1_bias: l1 regularization scale for bias
+                (0 to disable -- typically 0)
+            l1_emb: l1 regularization scale for embeddings
+                (0 to disable)
             l2_bias: l2 regularization scale for bias
                 (0 to disable -- typically 0)
             l2_emb: l2 regularization scale for embeddings
@@ -55,10 +61,15 @@ class EmbeddingMap(object):
         self.item_cat_cols = item_cat_cols
         self.context_cat_cols = context_cat_cols
 
+        # Regularization
+        self.l1_bias = l1_bias
         self.l2_bias = l2_bias
+        self.reg_bias = tf.contrib.layers.l1_l2_regularizer(
+            scale_l1=self.l1_bias, scale_l2=self.l2_bias)
+        self.l1_emb = l1_emb
         self.l2_emb = l2_emb
-        self.reg_bias = tf.contrib.layers.l2_regularizer(scale=self.l2_bias)
-        self.reg_emb = tf.contrib.layers.l2_regularizer(scale=self.l2_emb)
+        self.reg_emb = tf.contrib.layers.l1_l2_regularizer(
+            scale_l1=self.l1_emb, scale_l2=self.l2_emb)
 
         self.embedding_dim = embedding_dim
         # Note: possibly need an emb for NaN code
