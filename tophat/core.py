@@ -1,3 +1,4 @@
+from tophat import losses
 from tophat.ph_conversions import *
 from tophat.nets import *
 from typing import Dict
@@ -16,6 +17,7 @@ class FactModel(object):
     def __init__(self,
                  net,
                  batch_size,
+                 loss_fn: losses.PairLossFn = losses.softplus_loss,
                  optimizer: tf.train.Optimizer = tf.train.AdamOptimizer(
                      learning_rate=0.001),
                  seed=SEED,
@@ -24,6 +26,7 @@ class FactModel(object):
         self.seed = seed
         self.net = net
         self.batch_size = batch_size
+        self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.input_pair_d: Dict[str, tf.Tensor] = None
 
@@ -112,19 +115,7 @@ class FactModel(object):
 
             with tf.name_scope('loss'):
                 # TODO: this should be tied to the sampling technique
-                # Note: Hard coded BPR loss for now
-                # loss_bpr = tf.subtract(1., tf.sigmoid(
-                #     pos_score - neg_score), name='bpr')
-                # return tf.reduce_mean(loss_bpr, name='bpr_mean')
-
-                # loss_hinge = tf.clip_by_value(neg_score - pos_score + 1.,
-                #                               clip_value_min=0.,
-                #                               clip_value_max=999.,
-                #                               name='hinge')
-                # return tf.reduce_mean(loss_hinge, name='hinge_mean')
-
-                loss_softplus = tf.log1p(tf.exp(neg_score - pos_score + 1.))
-                return tf.reduce_mean(loss_softplus, name='softplus_mean')
+                return self.loss_fn(neg_score, pos_score)
 
     def training(self, loss) -> tf.Operation:
         """
