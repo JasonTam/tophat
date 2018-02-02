@@ -206,7 +206,7 @@ if __name__ == '__main__':
         description='Export factors from a checkpointed tophat model')
     parser.add_argument('environment', help='Run environment',
                         default='prod', nargs='?',
-                        choices=['integ', 'prod'])
+                        choices=['integ', 'dev', 'prod'])
 
     args = parser.parse_args()
     logger.info(pprint.pformat(args))

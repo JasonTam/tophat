@@ -224,7 +224,7 @@ if __name__ == '__main__':
         description='Fit a tophat model from scratch')
     parser.add_argument('environment', help='Run environment',
                         default='local', nargs='?',
-                        choices=['local', 'integ', 'prod'])
+                        choices=['local', 'integ', 'dev', 'prod'])
     parser.add_argument('--log_tag', help='Append this tag to the log dir',
                         default='', nargs='?',)
     parser.add_argument('--log_overwrite',

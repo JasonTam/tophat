@@ -171,7 +171,7 @@ if __name__ == '__main__':
         description='Export cold user / item representations from model')
     parser.add_argument('environment', help='Run environment',
                         default='prod', nargs='?',
-                        choices=['prod'])
+                        choices=['dev', 'prod'])
     args = parser.parse_args()
 
     config = Config(f'config/cold_config_{args.environment}.py')
