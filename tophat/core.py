@@ -115,7 +115,7 @@ class FactModel(object):
 
             with tf.name_scope('loss'):
                 # TODO: this should be tied to the sampling technique
-                return self.loss_fn(neg_score, pos_score)
+                return self.loss_fn(pos_score, neg_score)
 
     def training(self, loss) -> tf.Operation:
         """
