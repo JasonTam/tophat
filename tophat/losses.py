@@ -21,3 +21,10 @@ def hinge_loss(pos_score: tf.Tensor, neg_score: tf.Tensor) -> tf.Tensor:
 def softplus_loss(pos_score: tf.Tensor, neg_score: tf.Tensor) -> tf.Tensor:
     loss = tf.log1p(tf.exp(neg_score - pos_score + 1.), name='softplus')
     return tf.reduce_mean(loss, name='softplus_mean')
+
+
+NAMED_LOSSES = {
+    'bpr': bpr_loss,
+    'hinge': hinge_loss,
+    'softplus': softplus_loss,
+}

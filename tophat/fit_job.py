@@ -11,6 +11,7 @@ import glob
 from tophat.core import FactModel
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.nets import BilinearNet
+from tophat.losses import NAMED_LOSSES
 
 from tophat.naive_sampler import PairSampler
 from tophat.data import TrainDataLoader
@@ -34,6 +35,10 @@ class FitJob(object):
         self.save_every = fit_config.get('save_every')
         self.seed = fit_config.get('seed')
         tf.set_random_seed(self.seed)
+
+        self.loss_fn = NAMED_LOSSES[fit_config.get('loss_fn')]
+
+        self.sample_method = fit_config.get('sample_method')
 
         # Some export stuff
         self.config_export_path = fit_config.get('config_export_path')
@@ -91,6 +96,7 @@ class FitJob(object):
             net=BilinearNet(
                 embedding_map=self.embedding_map),
             batch_size=self.batch_size,
+            loss_fn=self.loss_fn,
         )
 
         # Save the catalog
@@ -106,7 +112,7 @@ class FitJob(object):
             self.train_data_loader,
             self.model.input_pair_d,
             self.batch_size,
-            method='adaptive',
+            method=self.sample_method,
             model=self.model,
             seed=self.seed
         )
