@@ -1,15 +1,16 @@
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 from tensorflow.contrib.tensorboard.plugins import projector
 from tophat.data import TrainDataLoader
 from tophat.metadata_proc import write_metadata_emb
-from typing import Iterable, Dict, Tuple, Optional, List
+from typing import Iterable, Dict, Tuple, Optional, List, Any
 from collections import defaultdict
 
 
 class EmbeddingMap(object):
     def __init__(self,
-                 cats_d: Dict[str, List[str]],
+                 cats_d: Dict[str, List[Any]],
                  user_cat_cols: Iterable[str],
                  item_cat_cols: Iterable[str],
                  context_cat_cols: Iterable[str],
@@ -19,9 +20,10 @@ class EmbeddingMap(object):
                  l1_emb: float=0.,
                  l2_emb: float=0.,
                  seed=322,
-                 zero_init_rows: Dict[str, Iterable[int]]=None,
-                 feature_weights_d: Dict[str, float]=None,
+                 zero_init_rows: Optional[Dict[str, Iterable[int]]]=None,
+                 feature_weights_d: Optional[Dict[str, float]]=None,
                  vis_emb_user_col: Optional[str]=None,
+                 init_emb_d: Optional[Dict[str, tf.Tensor]]=None,
                  ):
         """Convenience container for embedding layers
         
@@ -53,6 +55,11 @@ class EmbeddingMap(object):
             vis_emb_user_col: If provided, give users an additional
                 visual-specific embedding (the value of the argument will 
                 denote the name of the user column)
+            init_emb_d: Optional dictionary of weights to initialize embeddings
+                Can be a subset of features, but needs to conform to the
+                proper shape of the embedding. If there are categories missing
+                from a feature's embedding initialization, please fill them in
+                prior with some initialization scheme.
         """
 
         self.seed = seed
@@ -84,17 +91,27 @@ class EmbeddingMap(object):
             self.feature_weights_d = feature_weights_d
 
         with tf.variable_scope('embeddings'):
-            self.embeddings_d = {
-                feat_name: tf.get_variable(
-                    name=f'{feat_name}_embs',
-                    shape=[len(cats), embedding_dim],
-                    initializer=tf.random_normal_initializer(
+            self.embeddings_d = {}
+
+            for feat_name, cats in self.cats_d.items():
+                if init_emb_d is not None and feat_name in init_emb_d:
+                    # Initialize from passed-in weights
+                    emb_init = init_emb_d[feat_name]
+                    assert emb_init.shape == [len(cats), embedding_dim]
+                    shape = None
+                else:
+                    # Nothing to load, just rand initialization
+                    emb_init = tf.random_normal_initializer(
                         mean=0., stddev=1. / self.embedding_dim,
-                        seed=self.seed),
+                        seed=self.seed)
+                    shape = [len(cats), embedding_dim]
+                self.embeddings_d[feat_name] = tf.get_variable(
+                    name=f'{feat_name}_embs',
+                    shape=shape,
+                    initializer=emb_init,
                     regularizer=self.reg_emb
                 )
-                for feat_name, cats in self.cats_d.items()
-            }
+
         if zero_init_rows is not None:
             for k, v in zero_init_rows.items():
                 z = np.ones([len(self.cats_d[k]), embedding_dim],
@@ -197,6 +214,61 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
                         name=f'{name_tmp.format(feat_name)}_weighted')
 
     return looked_up
+
+
+def inits_via_avro(path_or_buf, cats: List[Any]
+                   ) -> tf.Tensor:
+    return inits_via_df(read_avro(path_or_buf), cats)
+
+
+def read_avro(path_or_buf) -> pd.DataFrame:
+    # TODO: this should come from some io package
+    import fastavro as avro
+
+    if isinstance(path_or_buf, str):
+        buf = open(path_or_buf, 'rb')
+    else:
+        buf = path_or_buf
+
+    reader = avro.reader(buf)
+    df = pd.DataFrame(list(reader))
+    try:
+        buf.close()
+    except AttributeError:
+        print('Stream has no attribute close')
+
+    return df
+
+
+def inits_via_df(df: pd.DataFrame, cats: List[Any]) -> tf.Tensor:
+    """Creates a tensor with initialization constants from a dataframe
+    of preloaded weights. The tensor will have the correct shape as dictated
+    by an input list of categories. Entries missing from the dataframe will
+    be filled from a random normal distribution.
+
+    Args:
+        df: dataframe of input weights
+        cats: categories (corresponds with the order of embeddings)
+
+    Returns:
+
+    """
+    # Note: the loaded index is always str type
+    factors = df.set_index('id').reindex(np.array(cats).astype(str)).factors
+
+    # Fill in missing with rand norm init
+    factors_arr = np.vstack(df.factors)
+    samp_mean = np.mean(factors_arr)
+    samp_std = np.std(factors_arr)
+    emb_dim = factors_arr.shape[1]
+    init_values = np.vstack(factors.apply(
+        lambda x: x
+        if hasattr(x, '__iter__')  # proxy for isnan
+        else np.random.normal(loc=samp_mean, scale=samp_std, size=emb_dim)))
+
+    emb_init = tf.constant(init_values, dtype='float32')
+
+    return emb_init
 
 
 class EmbeddingProjector(object):
