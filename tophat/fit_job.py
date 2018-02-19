@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 from time import time
@@ -10,6 +11,7 @@ import glob
 
 from tophat.core import FactModel
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
+from tophat.embedding import inits_via_avro, inits_via_df
 from tophat.nets import BilinearNet
 from tophat.losses import NAMED_LOSSES
 
@@ -80,6 +82,15 @@ class FitJob(object):
             zero_init_rows = self.validator.zero_init_rows
         else:
             zero_init_rows = None
+
+        if self.fit_config.get('init_remote_params'):
+            init_emb_d = self.embs_from_remote(
+                self.fit_config.get('init_remote_params')['remote_uri'],
+                self.fit_config.get('init_remote_params')['cols'],
+            )
+        else:
+            init_emb_d = None
+
         self.embedding_map = EmbeddingMap(
             cats_d=self.train_data_loader.cats_d,
             user_cat_cols=self.train_data_loader.user_cat_cols,
@@ -90,6 +101,7 @@ class FitJob(object):
             zero_init_rows=zero_init_rows,
             feature_weights_d=self.fit_config.get('feature_weights_d'),
             vis_emb_user_col=None,
+            init_emb_d=init_emb_d,
         )
 
         self.model = FactModel(
@@ -175,6 +187,35 @@ class FitJob(object):
                     self.validator.run_val(self.sess, summary_writer, step)
 
         embedding_projector.viz()
+
+    def embs_from_remote(self, embs_uri=None, cols=None):
+        """Loading from s3"""
+        if embs_uri is None or cols is None:
+            return None
+
+        logger.info('Loading Weights from s3...')
+        from lib_cerebro_py.custom_io import dd_from_parts
+        from tenacity import RetryError
+        cats_d = self.train_data_loader.cats_d
+
+        def df_from_col(col: str) -> pd.DataFrame:
+            logger.info(f'\t...{col}')
+            uri = os.path.join(embs_uri, col)
+            return dd_from_parts(uri, file_format='avro', limit_dates=False)\
+                .compute()
+
+        init_emb_d = {}
+        for col in cols:
+            try:
+                df = inits_via_df(df_from_col(col), cats_d[col])
+                init_emb_d[col] = df
+            except KeyError:
+                logger.warn(f'Trying to preload column={col}, but it is not'
+                            'in the catalog of embeddings to train')
+            except RetryError:
+                logger.warn(f'{col} not found in remote prefix={embs_uri}')
+
+        return init_emb_d
 
     def upload_ckpt(self):
         # Upload LOG_DIR to s3 path if applicable

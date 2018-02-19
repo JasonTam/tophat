@@ -16,7 +16,7 @@ RUN apt install -y --no-install-recommends \
     libc6-dev \
     libbz2-dev
 
-RUN wget https://www.python.org/ftp/python/3.6.0/Python-3.6.0.tar.xz
+RUN wget https://www.python.org/ftp/python/3.6.0/Python-3.6.0.tar.xz --no-check-certificate
 RUN tar xvf Python-3.6.0.tar.xz
 WORKDIR Python-3.6.0
 RUN ./configure

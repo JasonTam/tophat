@@ -59,7 +59,10 @@ class EmbeddingMap(object):
                 Can be a subset of features, but needs to conform to the
                 proper shape of the embedding. If there are categories missing
                 from a feature's embedding initialization, please fill them in
-                prior with some initialization scheme.
+                prior with some initialization scheme. 
+                (Warning: this does not load in any saved gradients or whatever
+                weights are used by the optimizer -- so it's only halfway to
+                actually resuming a model)
         """
 
         self.seed = seed
