@@ -1,13 +1,13 @@
 import unittest
 
 import numpy as np
-from tophat.data import TrainDataLoader
-from tophat.embedding import EmbeddingMap
-from tophat.nets import BilinearNet, BilinearNetWithNum, BilinearNetWithNumFC
-from tophat.core import FactModel
-from tophat.config_parser import Config
 
 from tophat import naive_sampler
+from tophat.core import FactModel
+from tophat.data import TrainDataLoader
+from tophat.embedding import EmbeddingMap
+from tophat.nets import BilinearNetWithNum
+from tophat.utils.config_parser import Config
 
 
 class TestBG(unittest.TestCase):

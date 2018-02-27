@@ -303,6 +303,7 @@ def eval_things(sess,
     #     if summary_writer is not None:
     #         summary_writer.add_summary(metric_val_summary, step)
 
+    ret_d = {}
     for m, vals in macro_metrics.items():
         metric_score = np.mean(vals)
         metric_score_std = np.std(vals)
@@ -313,7 +314,9 @@ def eval_things(sess,
         if summary_writer is not None:
             summary_writer.add_summary(metric_val_summary, step)
 
-    return macro_metrics
+        ret_d[m] = metric_score
+
+    return ret_d
 
 
 def eval_things_context(

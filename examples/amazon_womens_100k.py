@@ -1,18 +1,18 @@
 import argparse
+import os
 from time import time
 
 import numpy as np
-import os
 import tensorflow as tf
 from lib_cerebro_py.log import logger
 
 from tophat import naive_sampler
-from tophat.config_parser import Config
 from tophat.core import FactModel
 from tophat.data import TrainDataLoader
-from tophat.evaluation import Validator
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
+from tophat.evaluation import Validator
 from tophat.nets import BilinearNetWithNum
+from tophat.utils.config_parser import Config
 
 env = 'local'
 

@@ -1,19 +1,17 @@
-import pandas as pd
-import numpy as np
-import tensorflow as tf
-from tensorflow.python import debug as tf_debug
+import os
 from time import time
 
-import os
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from lib_cerebro_py.log import logger
 
 from tophat.core import FactModel
-from tophat.embedding import EmbeddingMap, EmbeddingProjector
-from tophat.nets import BilinearNetWithNum
-
 from tophat.data import TrainDataLoader
+from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.evaluation import Validator
-from tophat.config_parser import Config
-from lib_cerebro_py.log import logger
+from tophat.nets import BilinearNetWithNum
+from tophat.utils.config_parser import Config
 
 config = Config('config/config_amzn_vbpr.py')
 

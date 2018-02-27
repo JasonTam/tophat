@@ -1,27 +1,24 @@
-import numpy as np
-import tensorflow as tf
-from tensorflow.python import debug as tf_debug
-from time import time
-import pickle
-import json
-
-import os
+import argparse
 import glob
+import json
+import os
+import pickle
+import pprint
+from time import time
 
+import tensorflow as tf
+from lib_cerebro_py.log import logger
+
+from jobs import RepresentationExportJob
 from tophat.core import FactModel
+from tophat.d2v.d2v import fit_interactions, model_to_dfs
+from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.embedding import inits_via_avro, inits_via_df
-from tophat.d2v.d2v import fit_interactions, model_to_dfs
-from tophat.nets import BilinearNet
-
-from tophat.naive_sampler import PairSampler
-from tophat.data import TrainDataLoader
 from tophat.evaluation import Validator
-from tophat.config_parser import Config
-from tophat.export_repr import RepresentationExportJob
-from lib_cerebro_py.log import logger
-import argparse
-import pprint
+from tophat.naive_sampler import PairSampler
+from tophat.nets import BilinearNet
+from tophat.utils.config_parser import Config
 
 
 class FitJob(object):

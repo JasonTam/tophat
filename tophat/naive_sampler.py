@@ -239,7 +239,6 @@ class PairSampler(object):
             seed=seed,
         )
 
-
     def __iter__(self):
         if self.uniform_users:
             return self.iter_by_user()
@@ -318,7 +317,7 @@ class PairSampler(object):
                Vol. 11. 2011.
 
         Todo:
-            * Implement `nonpos_verification`
+            * Implement `nonpos_verification` (along with tiered interactions)
 
         """
         batch_size = len(user_inds_batch)  # NOT max_sampled
