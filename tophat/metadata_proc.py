@@ -24,7 +24,7 @@ def write_metadata_emb(cats_d: Dict[str, List[Any]],
         if feat_name in path_names_d:
             names_df = pd.read_csv(
                 path_names_d[feat_name], index_col=feat_name)
-            lbls_embs = names_df.loc[cats].reset_index(drop=True)
+            lbls_embs = names_df.reindex(cats).reset_index(drop=True)
             lbls_embs.index.name = 'index'
             lbls_embs.to_csv(path_out, sep='\t')
         else:

@@ -5,7 +5,7 @@ import pandas as pd
 import tensorflow as tf
 
 from tophat.core import pair_dict_via_cols
-from tophat import naive_sampler
+from tophat.sampling import pair_sampler
 
 
 class TestPP(unittest.TestCase):
@@ -106,7 +106,7 @@ class TestPP(unittest.TestCase):
         item_ids_all = self.cats_d[self.item_col]
 
         shuffle_inds = np.arange(len(self.interactions_df))
-        feed_dict_gen = naive_sampler.feed_dicter(
+        feed_dict_gen = pair_sampler.feed_dicter(
             shuffle_inds, self.batch_size,
             self.interactions_df,
             self.user_col, self.item_col,

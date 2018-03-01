@@ -2,11 +2,11 @@ import unittest
 
 import numpy as np
 
-from tophat import naive_sampler
 from tophat.core import FactModel
 from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap
 from tophat.nets import BilinearNetWithNum
+from tophat.sampling import pair_sampler
 from tophat.utils.config_parser import Config
 
 
@@ -31,7 +31,7 @@ class TestBG(unittest.TestCase):
             num_meta=self.train_data_loader.num_meta)
         )
         self.batch_size = self.config.get('batch_size')
-        self.sampler = naive_sampler.PairSampler(
+        self.sampler = pair_sampler.PairSampler(
             self.train_data_loader,
             self.model.input_pair_d,
             batch_size=self.batch_size,

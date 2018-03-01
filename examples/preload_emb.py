@@ -1,11 +1,11 @@
 import argparse
 import glob
 import json
-import os
 import pickle
 import pprint
 from time import time
 
+import os
 import tensorflow as tf
 from lib_cerebro_py.log import logger
 
@@ -16,8 +16,8 @@ from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.embedding import inits_via_avro, inits_via_df
 from tophat.evaluation import Validator
-from tophat.naive_sampler import PairSampler
 from tophat.nets import BilinearNet
+from tophat.sampling.pair_sampler import PairSampler
 from tophat.utils.config_parser import Config
 
 

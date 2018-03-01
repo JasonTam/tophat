@@ -26,3 +26,12 @@ def get_row_nz(csr_mat: sp.csr_matrix, row_ind: int):
     start_idx = csr_mat.indptr[row_ind]
     stop_idx = csr_mat.indptr[row_ind + 1]
     return csr_mat.indices[start_idx:stop_idx]
+
+
+def get_row_nz_data(csr_mat: sp.csr_matrix, row_ind: int):
+    """faster than csr_mat.get_row.nonzero()[-1]"""
+    start_idx = csr_mat.indptr[row_ind]
+    stop_idx = csr_mat.indptr[row_ind + 1]
+    nz = csr_mat.indices[start_idx:stop_idx]
+    data = csr_mat.data[start_idx:stop_idx]
+    return nz, data

@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 import pickle
 import argparse
+import gc
 from hyperopt import fmin, tpe, STATUS_OK, STATUS_FAIL, Trials
 from tophat.utils.config_parser import Config
 from jobs.fit_job import FitJob
@@ -81,6 +82,8 @@ def objective(params, path_log=None):
                 # Write header if first line
                 f.write(','.join(log_s.index) + '\n')
             log_s.to_frame().T.to_csv(f, header=False, index=False)
+
+    gc.collect()
 
     return ret_d
 

@@ -1,17 +1,17 @@
 import argparse
-import os
 from time import time
 
 import numpy as np
+import os
 import tensorflow as tf
 from lib_cerebro_py.log import logger
 
-from tophat import naive_sampler
 from tophat.core import FactModel
 from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.evaluation import Validator
 from tophat.nets import BilinearNetWithNum
+from tophat.sampling import pair_sampler
 from tophat.utils.config_parser import Config
 
 env = 'local'
@@ -66,7 +66,7 @@ def run(config):
 
     # Sample Generator
     logger.info('Setting up local sampler ...')
-    sampler = naive_sampler.PairSampler.from_data_loader(
+    sampler = pair_sampler.PairSampler.from_data_loader(
         train_data_loader,
         model.input_pair_d,
         batch_size=batch_size,
