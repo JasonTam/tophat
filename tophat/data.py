@@ -1,9 +1,11 @@
 import os
 import pandas as pd
+import itertools as it
 from collections import defaultdict
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
-from typing import Optional, Iterable, Tuple, Dict, List, Any, Sized
+from typing import Optional, Iterable, Tuple, Dict, List, Any, Sized, \
+    Sequence, Union
 
 from tophat.constants import FType
 from tophat.utils.pp_utils import append_dt_extracts
@@ -25,6 +27,8 @@ class FeatureSource(object):
                  feature_type: FType,
                  index_col: Optional[str]=None,
                  use_cols: Optional[List[str]]=None,
+                 concat_cols: Optional[List[Sequence[str]]]=None,
+                 drop: Optional[Union[Iterable[str], bool]]=True,
                  name=None,
                  ):
 
@@ -33,6 +37,8 @@ class FeatureSource(object):
         self.feature_type = feature_type
         self.index_col = index_col
         self.use_cols = use_cols
+        self.concat_cols = concat_cols
+        self.drop = drop
 
         self.data = None
 
@@ -65,7 +71,47 @@ class FeatureSource(object):
             else:
                 # Use entire dataframe
                 self.data = feat_df
+
+        if self.concat_cols is not None:
+            self.data = combine_cols(df=self.data,
+                                     cols_seq=self.concat_cols,
+                                     drop=self.drop)
+
         return self
+
+
+def combine_cols(df: pd.DataFrame,
+                 cols_seq: Sequence[Sequence[str]],
+                 sep: str='__',
+                 drop: Optional[Union[Iterable[str], bool]]=True):
+    """Concatenates columns (will output str dtypes)
+    
+    Args:
+        df: dataframe to operate on
+        cols_seq: list-like of list-like columns to concat together
+        sep: string separator
+            Note: careful - tensorflow needs [A-Za-z0-9_.\\-/]* for scope
+        drop: if True, drop the columns after concatenating
+            if a sequence of columns is provided, those columns will be dropped
+
+    Returns:
+        df: df with concatenated columns
+
+    """
+
+    for cols in cols_seq:
+        new_col_name = sep.join(cols)
+        df[new_col_name] = df[cols[0]].astype(str).str.cat(
+            [df[col] for col in cols[1:]], sep=sep)
+
+    if drop:
+        if isinstance(drop, Iterable):
+            drop_cols = list(set(drop))
+        else:
+            drop_cols = list(set(it.chain(*cols_seq)))
+        df.drop(drop_cols, axis=1)
+
+    return df
 
 
 class InteractionsSource(object):
