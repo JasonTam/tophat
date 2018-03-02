@@ -90,6 +90,9 @@ def objective(params, path_log=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Example of hyper-parameter optimization')
+    parser.add_argument('--config', help='Load config file via path',
+                        default=f'config/fit_config_hyperopt_local2.py',
+                        nargs='?')
     parser.add_argument('--path_log', help='Where to log params and scores',
                         default='/tmp/hpo_tophat.csv', nargs='?',)
     parser.add_argument('--path_trials',
@@ -100,7 +103,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    config = Config(f'config/fit_config_hyperopt_local.py')
+    config = Config(args.config)
 
     obj_fn = partial(objective, path_log=args.path_log)
 
