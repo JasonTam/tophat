@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 import tensorflow as tf
+from collections import ChainMap
 from typing import Dict, Iterable, Sized, Sequence, Optional
 
 from tophat.constants import *
@@ -32,22 +33,29 @@ def batcher(seq: Sized, n: int=1):
         yield seq[ii:min(ii + n, l)]
 
 
-def feed_via_pair(input_pair_d: Dict[str, tf.Tensor],
-                  user_feed_d: Dict[str, Iterable],
-                  pos_item_feed_d: Dict[str, Iterable],
-                  neg_item_feed_d: Dict[str, Iterable],
-                  context_feed_d: Dict[str, Iterable],
-                  ):
-    feed_pair_dict = {
-        **{input_pair_d[f'{USER_VAR_TAG}.{feat_name}']: data_in
-           for feat_name, data_in in user_feed_d.items()},
-        **{input_pair_d[f'{POS_VAR_TAG}.{feat_name}']: data_in
-           for feat_name, data_in in pos_item_feed_d.items()},
-        **{input_pair_d[f'{NEG_VAR_TAG}.{feat_name}']: data_in
-           for feat_name, data_in in neg_item_feed_d.items()},
-        **{input_pair_d[f'{CONTEXT_VAR_TAG}.{feat_name}']: data_in
-           for feat_name, data_in in context_feed_d.items()},
-    }
+def feed_via_pair(
+        user_feed_d: Dict[str, Iterable],
+        pos_item_feed_d: Dict[str, Iterable],
+        neg_item_feed_d: Dict[str, Iterable],
+        context_feed_d: Dict[str, Iterable],
+        input_pair_d: Optional[Dict[str, tf.Tensor]]=None,
+        ) -> Dict[str, np.array]:
+
+    feed_pair_dict = dict(ChainMap(
+        *[{f'{tag}.{feat_name}': data_in
+           for feat_name, data_in in feed_d.items()}
+          for tag, feed_d in [
+              (USER_VAR_TAG, user_feed_d),
+              (POS_VAR_TAG, pos_item_feed_d),
+              (NEG_VAR_TAG, neg_item_feed_d),
+              (CONTEXT_VAR_TAG, context_feed_d),
+          ]]
+    ))
+
+    if input_pair_d is not None:
+        feed_pair_dict = {
+            input_pair_d[k]: v for k, v in feed_pair_dict.items()}
+
     return feed_pair_dict
 
 
@@ -99,6 +107,8 @@ class PairSampler(object):
             (optimize all users equally rather than weighing more active users)
         method: Negative sampling method
         model: Optional model for adaptive sampling
+        use_ds_iter: If `True`, use tf.data.Dataset iterator API, else
+            use generator of placeholder dictionaries for feed_dict API
         seed: Seed for random state
     """
     def __init__(self,
@@ -115,6 +125,7 @@ class PairSampler(object):
                  method: str='uniform',
                  model=None,
                  sess: tf.Session=None,
+                 use_ds_iter: bool=True,
                  seed: int=0,
                  ):
 
@@ -160,6 +171,9 @@ class PairSampler(object):
         self.uniform_users = uniform_users
 
         self.input_pair_d = input_pair_d
+        self.use_ds_iter = use_ds_iter
+        self.input_pair_d_usage = None if self.use_ds_iter \
+            else self.input_pair_d
         self._model = model
 
         # Upfront processing
@@ -236,6 +250,7 @@ class PairSampler(object):
                          uniform_users: bool=False,
                          method: str='uniform',
                          model=None,
+                         use_ds_iter: bool=True,
                          seed: int=0,
                          ):
         return cls(
@@ -261,6 +276,7 @@ class PairSampler(object):
             uniform_users=uniform_users,
             method=method,
             model=model,
+            use_ds_iter=use_ds_iter,
             seed=seed,
         )
 
@@ -382,10 +398,10 @@ class PairSampler(object):
                 context_feed_d = self.context_feed_via_inds(inds_batch)
 
                 feed_pair_dict = feed_via_pair(
-                    self.input_pair_d,
                     user_feed_d,
                     pos_item_feed_d, neg_item_feed_d,
-                    context_feed_d
+                    context_feed_d,
+                    input_pair_d=self.input_pair_d_usage,
                 )
                 yield feed_pair_dict
 
@@ -422,10 +438,10 @@ class PairSampler(object):
 
                 # TODO: fix context feed
                 feed_pair_dict = feed_via_pair(
-                    self.input_pair_d,
                     user_feed_d,
                     pos_item_feed_d, neg_item_feed_d,
                     context_feed_d={},
+                    input_pair_d=self.input_pair_d_usage,
                 )
                 yield feed_pair_dict
 

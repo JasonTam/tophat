@@ -1,7 +1,7 @@
 from tophat import losses
 from tophat.ph_conversions import *
 from tophat.nets import *
-from typing import Dict
+from typing import Dict, Optional
 
 
 class FactModel(object):
@@ -20,6 +20,7 @@ class FactModel(object):
                  loss_fn: losses.PairLossFn = losses.softplus_loss,
                  optimizer: tf.train.Optimizer = tf.train.AdamOptimizer(
                      learning_rate=0.001),
+                 input_pair_d: Optional[Dict[str, tf.Tensor]]=None,
                  seed=SEED,
                  ):
 
@@ -34,7 +35,7 @@ class FactModel(object):
 
         # Make Placeholders according to our cats
         with tf.name_scope('placeholders'):
-            self.input_pair_d = self.get_pair_dict(
+            self.input_pair_d = input_pair_d or self.get_pair_dict(
                 self.batch_size)
 
     def get_fwd_dict(self, batch_size: int=None):

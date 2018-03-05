@@ -8,7 +8,7 @@ from lib_cerebro_py.log import logger
 from tensorflow.contrib.metrics import streaming_mean, streaming_auc, \
     streaming_sparse_average_precision_at_k
 from tqdm import tqdm
-from typing import Dict, Any, Generator, Tuple, Sequence
+from typing import Dict, Any, Generator, Tuple, Sequence, Optional, Union
 
 from tophat.constants import FType
 from tophat.core import fwd_dict_via_ftypemeta
@@ -21,11 +21,11 @@ def items_pred_dicter(user_id: Any, item_ids: Sequence[Any],
                       item_cat_codes_df: pd.DataFrame,
                       user_num_feats_df: pd.DataFrame,
                       item_num_feats_df: pd.DataFrame,
-                      input_fwd_d: Dict[str, tf.Tensor],
                       context_ind: int=None,
                       context_cat_codes_df: pd.DataFrame=None,
                       # context_num_feats: pd.DataFrame=None,
-                      ) -> Dict[tf.Tensor, Any]:
+                      input_fwd_d: Optional[Dict[str, tf.Tensor]]=None,
+                      ) -> Dict[Union[str, tf.Tensor], Any]:
     # todo: a little redundancy with the dicters in tophat.core
     """Creates feeds for forward prediction for a single user
     Note: This does not batch within the list of items passed in
@@ -38,9 +38,11 @@ def items_pred_dicter(user_id: Any, item_ids: Sequence[Any],
         item_cat_codes_df: Encoded item category features
         user_num_feats_df: User numerical features
         item_num_feats_df: Item numerical features
-        input_fwd_d: Dictionary of feed-forward placeholders
         context_ind: The particular context we are predicting under
         context_cat_codes_df: Dataframe of encoded context category features
+        input_fwd_d: Optional dictionary of feed-forward placeholders
+            If provided, will change the keys of the return to 
+            placeholder tensors. 
 
     Returns:
         Feed dictionary to score all items for a given user under a context
@@ -65,13 +67,17 @@ def items_pred_dicter(user_id: Any, item_ids: Sequence[Any],
             {'item_num_feats': item_num_feats_df.loc[item_ids].values})
 
     feed_fwd_dict = {
-        **{input_fwd_d[f'{feat_name}']: data_in * n_items
+        **{f'{feat_name}': data_in * n_items
            for feat_name, data_in in user_feed_d.items()},
-        **{input_fwd_d[f'{feat_name}']: data_in
+        **{f'{feat_name}': data_in
            for feat_name, data_in in item_feed_d.items()},
-        **{input_fwd_d[f'{feat_name}']: data_in * n_items
+        **{f'{feat_name}': data_in * n_items
            for feat_name, data_in in context_feed_d.items()},
     }
+
+    if input_fwd_d is not None:
+        feed_fwd_dict = {input_fwd_d[k]: v for k, v in feed_fwd_dict.items()}
+
     return feed_fwd_dict
 
 
@@ -82,7 +88,7 @@ def items_pred_dicter_gen(
         item_cat_codes_df: pd.DataFrame,
         user_num_feats_df: pd.DataFrame,
         item_num_feats_df: pd.DataFrame,
-        input_fwd_d: Dict[str, tf.Tensor],
+        input_fwd_d: Optional[Dict[str, tf.Tensor]],
 ) -> Generator[Tuple[int, Dict[tf.Tensor, Any]], None, None]:
     """Generates feeds for forward prediction for many users
         each batch will be all items for a single user
@@ -104,10 +110,10 @@ def items_pred_dicter_gen(
         yield user_id, items_pred_dicter(user_id, item_ids,
                                          user_cat_codes_df, item_cat_codes_df,
                                          user_num_feats_df, item_num_feats_df,
-                                         input_fwd_d,
                                          context_ind=None,
                                          context_cat_codes_df=None,
                                          # context_num_feats=context_num_feats,
+                                         input_fwd_d=input_fwd_d,
                                          )
 
 
@@ -118,9 +124,9 @@ def items_pred_dicter_gen_context(
         item_cat_codes_df: pd.DataFrame,
         user_num_feats_df: pd.DataFrame,
         item_num_feats_df: pd.DataFrame,
-        input_fwd_d: Dict[str, tf.Tensor],
         context_inds: Sequence[int],
         context_cat_codes_df: pd.DataFrame,
+        input_fwd_d: Dict[str, tf.Tensor],
 ):
     """Generates feeds for forward prediction for many users-contexts
     each batch will be all items for a single user-context
@@ -150,9 +156,9 @@ def items_pred_dicter_gen_context(
             user_id, item_ids,
             user_cat_codes_df, item_cat_codes_df,
             user_num_feats_df, item_num_feats_df,
-            input_fwd_d,
             context_ind=context_ind,
             context_cat_codes_df=context_cat_codes_df,
+            input_fwd_d=input_fwd_d,
         )
 
 
@@ -163,16 +169,24 @@ def make_metrics_ops(fwd_op: tf.Tensor,
     Args:
         fwd_op: Forward operation of network
         input_fwd_d: Dictionary of feed-forward placeholders
+            Optionally, this will also contain target variables
 
     Returns:
         Tuple of metric operations, reset operations, and feed dictionary
     """
 
-    with tf.name_scope('placeholders_eval'):
-        ph_d = {
-            'y_true_ph': tf.placeholder('int64'),
-            'y_true_bool_ph': tf.placeholder('bool'),
+    if (('y_true_ph' in input_fwd_d.keys()) and
+            ('y_true_bool_ph' in input_fwd_d.keys())):
+        targ_d = {
+            'y_true_ph': input_fwd_d['y_true_ph'],
+            'y_true_bool_ph': input_fwd_d['y_true_bool_ph'],
         }
+    else:
+        with tf.name_scope('placeholders_eval'):
+            targ_d = {
+                'y_true_ph': tf.placeholder('int64'),
+                'y_true_bool_ph': tf.placeholder('bool'),
+            }
 
     # Define our metrics: MAP@10 and AUC (hardcoded for now)
     k = 10
@@ -183,13 +197,13 @@ def make_metrics_ops(fwd_op: tf.Tensor,
         #   (over all users)
         # instead of averaging the AUC's over users
         mapk, update_op_mapk = streaming_sparse_average_precision_at_k(
-            val_preds, ph_d['y_true_ph'], k=k)
+            val_preds, targ_d['y_true_ph'], k=k)
         auc, update_op_auc = streaming_auc(
-            tf.sigmoid(val_preds), ph_d['y_true_bool_ph'])
+            tf.sigmoid(val_preds), targ_d['y_true_bool_ph'])
         # Tjur's Pseudo R2 inspired bpr
-        pb_t = tf.to_float(ph_d['y_true_bool_ph'],
+        pb_t = tf.to_float(targ_d['y_true_bool_ph'],
                            name='true_pos')
-        nb_t = tf.to_float(tf.logical_not(ph_d['y_true_bool_ph']),
+        nb_t = tf.to_float(tf.logical_not(targ_d['y_true_bool_ph']),
                            name='true_neg')
         pos_mean = (tf.reduce_sum(tf.multiply(pb_t, val_preds)) /
                     tf.reduce_sum(pb_t))
@@ -212,7 +226,7 @@ def make_metrics_ops(fwd_op: tf.Tensor,
         'pm': (pm, update_op_pm),
         'nm': (nm, update_op_nm),
     }
-    return metric_ops_d, reset_metrics_op, ph_d
+    return metric_ops_d, reset_metrics_op, targ_d
 
 
 def eval_things(sess,
@@ -277,20 +291,24 @@ def eval_things(sess,
             user_id, cur_user_fwd_dict = next(pred_feeder_gen)
         except StopIteration:
             break
-        # y_true = interactions_df.loc[interactions_df[user_col]
-        #                              == user_id][item_col].cat.codes.values
-        y_true = interactions_df.loc[interactions_df[user_col]
-                                     == user_id]['item_reenc'].cat.codes.values
+        # Use re-encoded instead of `item_col`
+        y_true = interactions_df.loc[interactions_df[user_col] == user_id]\
+            ['item_reenc'].cat.codes.values
 
         y_true_bool = np.zeros(len(item_ids), dtype=bool)
         y_true_bool[y_true] = True
+
+        # Run updates
         sess.run([tup[1] for tup in metric_ops_d.values()], feed_dict={
             **cur_user_fwd_dict,
             **{eval_ph_d['y_true_ph']: y_true[None, :],
                eval_ph_d['y_true_bool_ph']: y_true_bool[None, :],
                }})
-        for m, m_tup in metric_ops_d.items():
-            macro_metrics[m].append(sess.run(m_tup[0]))
+        # Run and store aggregation
+        metric_vals = sess.run([tup[0] for tup in metric_ops_d.values()])
+        for m, v in zip(metric_ops_d.keys(), metric_vals):
+            macro_metrics[m].append(v)
+
         sess.run(reset_metrics_op)
 
     # # NOTE: This is for micro aggregation (also remove the reset above)
@@ -567,23 +585,83 @@ class Validator(object):
         # Define our metrics: MAP@10 and AUC
         self.model = model
 
-        self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = make_metrics_ops(
-            self.model.forward, self.input_fwd_d)
+        self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = \
+            make_metrics_ops(self.model.forward, self.input_fwd_d)
 
     def run_val(self, sess, summary_writer, step):
-        return eval_things(
-            sess,
-            self.interactions_df,
-            self.user_col_val, self.item_col_val,
+        # use the same users for every eval step
+        pred_feeder_gen = items_pred_dicter_gen(
             self.user_ids_val, self.item_ids,
             self.user_cat_codes_df, self.item_cat_codes_df,
             self.user_num_feats_df, self.item_num_feats_df,
-            self.input_fwd_d,
-            self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d,
-            n_users_eval=self.n_users_eval,
-            summary_writer=summary_writer, step=step,
-            model=self.model,  # todo: temp
+            input_fwd_d=None,
         )
+
+        def cur_user_fwd_gen():
+            for user_id, cur_user_fwd_dict in pred_feeder_gen:
+                y_true = self.interactions_df \
+                    .loc[self.interactions_df[self.user_col_val] == user_id] \
+                    ['item_reenc'].cat.codes.values
+
+                y_true_bool = np.zeros(len(self.item_ids), dtype=bool)
+                y_true_bool[y_true] = True
+
+                cur_user_fwd_dict['y_true_ph'] = y_true[None, :]
+                cur_user_fwd_dict['y_true_bool_ph'] = y_true_bool[None, :]
+
+                yield cur_user_fwd_dict
+
+        input_and_targ_d = {
+            **self.input_fwd_d, **self.eval_ph_d,
+        }
+
+        ds = tf.data.Dataset.from_generator(
+            cur_user_fwd_gen,
+            {k: v.dtype for k, v in input_and_targ_d.items()},
+            {k: v.shape for k, v in input_and_targ_d.items()}, ) \
+            .prefetch(10)
+
+        input_pair_d_via_iter = ds.make_one_shot_iterator() \
+            .get_next()
+
+        # Remake graph replacing placeholders with ds iterator
+        self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = \
+            make_metrics_ops(self.model.forward, input_pair_d_via_iter)
+
+        if self.n_users_eval < 0:
+            n_users_eval = len(self.user_ids_val)
+        else:
+            n_users_eval = min(self.n_users_eval, len(self.user_ids_val))
+
+        macro_metrics = defaultdict(lambda: [])
+        sess.run(tf.local_variables_initializer())
+        sess.run(self.reset_metrics_op)
+        for _ in tqdm(range(n_users_eval)):
+
+            # Run updates
+            sess.run([tup[1] for tup in self.metric_ops_d.values()])
+            # Run and store aggregation
+            metric_vals = sess.run(
+                [tup[0] for tup in self.metric_ops_d.values()])
+            for m, v in zip(self.metric_ops_d.keys(), metric_vals):
+                macro_metrics[m].append(v)
+
+            sess.run(self.reset_metrics_op)
+
+        ret_d = {}
+        for m, vals in macro_metrics.items():
+            metric_score = np.mean(vals)
+            metric_score_std = np.std(vals)
+            metric_val_summary = tf.Summary(value=[
+                tf.Summary.Value(tag=f'{m}_val',
+                                 simple_value=metric_score)])
+            logger.info(f'(val){m} = {metric_score} +/- {metric_score_std}')
+            if summary_writer is not None:
+                summary_writer.add_summary(metric_val_summary, step)
+
+            ret_d[m] = metric_score
+
+        return ret_d
 
     def run_val_context(self, sess, summary_writer, step):
         """ On a per-context level instead of per-user
