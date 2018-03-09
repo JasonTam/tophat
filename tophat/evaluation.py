@@ -453,6 +453,11 @@ class Validator(object):
         self.reset_metrics_op = None
         self.eval_ph_d = None
 
+        # Some DS placeholders
+        self.ds = None
+        self.input_iter = None
+        self.input_batch = None
+
         train_item_counts = train_data_loader.interactions_df.groupby(train_data_loader.item_col).size()
         warm_items = set(train_item_counts.loc[train_item_counts >= n_xns_as_cold].index)
 
@@ -588,16 +593,17 @@ class Validator(object):
         self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = \
             make_metrics_ops(self.model.forward, self.input_fwd_d)
 
-    def run_val(self, sess, summary_writer, step):
-        # use the same users for every eval step
-        pred_feeder_gen = items_pred_dicter_gen(
-            self.user_ids_val, self.item_ids,
-            self.user_cat_codes_df, self.item_cat_codes_df,
-            self.user_num_feats_df, self.item_num_feats_df,
-            input_fwd_d=None,
-        )
+        self.init_ds()
 
+    def init_ds(self):
         def cur_user_fwd_gen():
+            # use the same users in the same order if this gen is called again
+            pred_feeder_gen = items_pred_dicter_gen(
+                self.user_ids_val, self.item_ids,
+                self.user_cat_codes_df, self.item_cat_codes_df,
+                self.user_num_feats_df, self.item_num_feats_df,
+                input_fwd_d=None,
+            )
             for user_id, cur_user_fwd_dict in pred_feeder_gen:
                 y_true = self.interactions_df \
                     .loc[self.interactions_df[self.user_col_val] == user_id] \
@@ -615,18 +621,19 @@ class Validator(object):
             **self.input_fwd_d, **self.eval_ph_d,
         }
 
-        ds = tf.data.Dataset.from_generator(
+        self.ds = tf.data.Dataset.from_generator(
             cur_user_fwd_gen,
             {k: v.dtype for k, v in input_and_targ_d.items()},
             {k: v.shape for k, v in input_and_targ_d.items()}, ) \
             .prefetch(10)
-
-        input_pair_d_via_iter = ds.make_one_shot_iterator() \
-            .get_next()
+        self.input_iter = self.ds.make_initializable_iterator()
+        self.input_batch = self.input_iter.get_next()
 
         # Remake graph replacing placeholders with ds iterator
         self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = \
-            make_metrics_ops(self.model.forward, input_pair_d_via_iter)
+            make_metrics_ops(self.model.forward, self.input_batch)
+
+    def run_val(self, sess, summary_writer, step):
 
         if self.n_users_eval < 0:
             n_users_eval = len(self.user_ids_val)
@@ -635,6 +642,7 @@ class Validator(object):
 
         macro_metrics = defaultdict(lambda: [])
         sess.run(tf.local_variables_initializer())
+        sess.run(self.input_iter.initializer)
         sess.run(self.reset_metrics_op)
         for _ in tqdm(range(n_users_eval)):
 

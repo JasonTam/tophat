@@ -179,7 +179,7 @@ class PairSampler(object):
         # Upfront processing
         self.n_users = len(interactions_df[user_col].cat.categories)
         self.n_items = len(interactions_df[item_col].cat.categories)
-        if self.method in {'uniform_ordinal', 'adaptive'}:
+        if 'ordinal' in self.method and 'activity' in interactions_df.columns:
             df = calc_pseudo_ratings(
                 interactions_df=interactions_df,
                 user_col=user_col,
