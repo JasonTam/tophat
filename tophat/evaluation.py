@@ -198,8 +198,8 @@ def make_metrics_ops(fwd_op: tf.Tensor,
         # instead of averaging the AUC's over users
         mapk, update_op_mapk = streaming_sparse_average_precision_at_k(
             val_preds, targ_d['y_true_ph'], k=k)
-        auc, update_op_auc = streaming_auc(
-            tf.sigmoid(val_preds), targ_d['y_true_bool_ph'])
+        auc, update_op_auc = tf.metrics.auc(
+            targ_d['y_true_bool_ph'], tf.sigmoid(val_preds))
         # Tjur's Pseudo R2 inspired bpr
         pb_t = tf.to_float(targ_d['y_true_bool_ph'],
                            name='true_pos')

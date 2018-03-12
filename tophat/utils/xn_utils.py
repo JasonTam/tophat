@@ -92,7 +92,7 @@ def kernel_via_xn_muls(xn_nodes: Dict[frozenset, tf.Tensor]) -> tf.Tensor:
     if len(xn_nodes):
         # Reduce nodes of order > 1
         contrib_dot = tf.add_n([
-            tf.reduce_sum(node, 1, keep_dims=False)
+            tf.reduce_sum(node, 1, keepdims=False)
             for s, node in xn_nodes.items() if len(s) > 1
         ], name='contrib_dot')
     else:

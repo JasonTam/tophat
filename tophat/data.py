@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+from pandas.api.types import CategoricalDtype
 import itertools as it
 from collections import defaultdict
 from lib_cerebro_py import custom_io
@@ -329,7 +330,7 @@ def cast_cat(feats_d: Dict[FType, pd.DataFrame],
         else:
             existing_cats = None
         feats_d[FType.CAT][col] = feats_d[FType.CAT][col].astype(
-            'category', categories=existing_cats)
+            CategoricalDtype(existing_cats))
     return feats_d
 
 
@@ -413,12 +414,12 @@ def load_simple(
     existing_user_cats = user_feats_d[FType.CAT][user_col].cat.categories\
         if user_col in user_feats_d[FType.CAT] else None
     interactions_df[user_col] = interactions_df[user_col].astype(
-        'category', categories=existing_user_cats)
+        CategoricalDtype(existing_user_cats))
 
     existing_item_cats = item_feats_d[FType.CAT][item_col].cat.categories\
         if item_col in item_feats_d[FType.CAT] else None
     interactions_df[item_col] = interactions_df[item_col].astype(
-        'category', categories=existing_item_cats)
+        CategoricalDtype(existing_item_cats))
 
     log_shape_or_npartitions(interactions_df, 'interactions_df')
     log_shape_or_npartitions(user_feats_d[FType.CAT], 'user_feats_df')
@@ -495,9 +496,9 @@ def load_simple_warm_cats(
     interactions_df = interactions_df.loc[filt_s].copy()
 
     interactions_df[user_col] = interactions_df[user_col].astype(
-        'category', categories=users_filt)
+        CategoricalDtype(users_filt))
     interactions_df[item_col] = interactions_df[item_col].astype(
-        'category', categories=items_filt)
+        CategoricalDtype(items_filt))
 
     log_shape_or_npartitions(interactions_df, 'warm interactions_df')
 
