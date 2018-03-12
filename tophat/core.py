@@ -12,6 +12,8 @@ class FactModel(object):
         batch_size: Batch size for fitting
         optimizer: Training optimizer object
         seed: Seed for random state
+        item_col: name of item column -- used to get the number of items
+            which is used for k-OS loss
     """
 
     def __init__(self,
@@ -22,6 +24,7 @@ class FactModel(object):
                      learning_rate=0.001),
                  input_pair_d: Optional[Dict[str, tf.Tensor]]=None,
                  seed=SEED,
+                 item_col: Optional[str]=None,
                  ):
 
         self.seed = seed
@@ -37,6 +40,10 @@ class FactModel(object):
         with tf.name_scope('placeholders'):
             self.input_pair_d = input_pair_d or self.get_pair_dict(
                 self.batch_size)
+
+        # for k-OS loss
+        if item_col:
+            self.n_items = len(self.net.embedding_map.cats_d[item_col])
 
     def get_fwd_dict(self, batch_size: int=None):
         """Gets the placeholders required for the forward prediction of a
@@ -114,9 +121,14 @@ class FactModel(object):
                 neg_score = tf.identity(self.forward(
                     neg_input_d), name='neg_score')
 
+            first_violation = self.input_pair_d.get(
+                f'{MISC_TAG}.first_violator_inds', None)
+
             with tf.name_scope('loss'):
                 # TODO: this should be tied to the sampling technique
-                return self.loss_fn(pos_score, neg_score)
+                return self.loss_fn(pos_score, neg_score,
+                                    first_violation, self.n_items,
+                                    )
 
     def training(self, loss) -> tf.Operation:
         """

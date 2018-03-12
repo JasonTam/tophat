@@ -12,6 +12,7 @@ USER_VAR_TAG = 'user'
 POS_VAR_TAG = 'pos'
 NEG_VAR_TAG = 'neg'
 CONTEXT_VAR_TAG = 'context'
+MISC_TAG = 'misc'
 TAG_DELIM = '.'
 
 

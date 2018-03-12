@@ -33,13 +33,15 @@ def sample_adaptive(
         pos_item_inds_batch: Sequence[int],
         use_first_violation: bool=False,
         xn_csr: sp.csr_matrix=None,
+        return_n_samp: bool=False,
 ):
     """Uses the forward prediction of `self.model` to adaptively sample
     the first, or most violating negative candidate
     
-    Note: for true WARP [4]_ sampling, we would need to also return 
+    Note: for true WARP [4]_ sampling with k-OS loss, we need to also return
     the number of samples it took to reach the first violation
-    to pass into our loss function. Also `use_first_violation=True`.
+    to pass into our loss function. 
+        (set `use_first_violation=True` and `return_n_samp=True` ) 
 
     Args:
         n_items: number of items in catalog to sample from
@@ -51,7 +53,7 @@ def sample_adaptive(
         pos_item_inds_batch: The positive items of the batch
             (used to find violations -- only in the case where 
             `use_first_violation` is True)
-        use_first_violation: If True, the sampled negative will be be the
+        use_first_violation: If True, the sampled negative will be the
             first negative candidate to score over 1+score(positive). If
             there are no such violations, the last candidate is used.
             If False, use the worst offender
@@ -64,6 +66,8 @@ def sample_adaptive(
                 a positive interaction of a higher tier
                 Ex. Give more important interactions higher values in this 
                 matrix)
+        return_n_samp: If True, also return the number of samples to reach
+            the first violation. Requires `use_first_violation` to be True.
 
     Returns:
         Array with shape [batch_size] of random items as negatives
@@ -71,12 +75,7 @@ def sample_adaptive(
     References:
         .. [4] Weston, Jason, Samy Bengio, and Nicolas Usunier. "Wsabie:
            Scaling up to large vocabulary image annotation." IJCAI.
-           Vol. 11. 2011.
-           
-    Todo:
-        Number of samples from `use_first_violation` is not yet returned and 
-        not handled in WARP loss yet (downstream)
-        
+           Vol. 11. 2011.        
 
     """
 
@@ -119,14 +118,18 @@ def sample_adaptive(
         # Get index of the first violation
         first_violator_inds = np.argmax(violations, axis=1)
 
-        # For the users with no violations, set first violation to last ind
-        first_violator_inds[~violations[
-            range(batch_size), first_violator_inds]
-        ] = max_sampled - 1
-
+        # For the users with no sampled violations, set violation index to inf
+        #   this will cause the loss weight to be 0 (no update)
         neg_item_inds_batch = neg_item_inds[
             range(len(neg_item_inds)), first_violator_inds
         ]
+
+        first_violator_inds[~violations[
+            range(batch_size), first_violator_inds]
+        ] = 2**31 - 1  # (our int32 "infinity")
+
+        if return_n_samp:
+            return neg_item_inds_batch, first_violator_inds
     else:
         # Get the worst offender
         neg_item_inds_batch = neg_item_inds[
@@ -134,4 +137,3 @@ def sample_adaptive(
         ]
 
     return neg_item_inds_batch
-

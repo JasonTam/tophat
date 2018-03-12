@@ -38,6 +38,7 @@ def feed_via_pair(
         pos_item_feed_d: Dict[str, Iterable],
         neg_item_feed_d: Dict[str, Iterable],
         context_feed_d: Dict[str, Iterable],
+        misc_feed_d: Optional[Dict[str, Iterable]]=None,
         input_pair_d: Optional[Dict[str, tf.Tensor]]=None,
         ) -> Dict[str, np.array]:
 
@@ -49,7 +50,8 @@ def feed_via_pair(
               (POS_VAR_TAG, pos_item_feed_d),
               (NEG_VAR_TAG, neg_item_feed_d),
               (CONTEXT_VAR_TAG, context_feed_d),
-          ]]
+              (MISC_TAG, misc_feed_d),
+          ] if feed_d is not None]
     ))
 
     if input_pair_d is not None:
@@ -162,6 +164,7 @@ class PairSampler(object):
             'uniform_ordinal': self.sample_uniform_ordinal,
             'adaptive': self.sample_adaptive,
             'adaptive_ordinal': self.sample_adaptive_ordinal,
+            'adaptive_warp': self.sample_adaptive_warp,
         }[self.method]
 
         self.n_epochs = n_epochs if n_epochs >= 0 else sys.maxsize
@@ -207,6 +210,7 @@ class PairSampler(object):
                            'uniform_ordinal',
                            'adaptive',
                            'adaptive_ordinal',
+                           'adaptive_warp',
                            } \
                 or self.uniform_users:
             self.xn_csr = self.xn_coo.tocsr()
@@ -339,6 +343,23 @@ class PairSampler(object):
                                         self.xn_csr,
                                         )
 
+    def sample_adaptive_warp(self,
+                             user_inds_batch: Sequence[int],
+                             pos_item_inds_batch: Sequence[int],
+                             use_first_violation: bool=True,
+                             return_n_samp: bool=True,
+                             ):
+        """See tophat.adaptive.sample_adaptive"""
+        return adaptive.sample_adaptive(self.n_items,
+                                        self.max_sampled,
+                                        self.score_via_inds_fn,
+                                        user_inds_batch,
+                                        pos_item_inds_batch,
+                                        use_first_violation,
+                                        self.xn_csr,
+                                        return_n_samp,
+                                        )
+
     def score_via_dict_fn(self, fwd_dict):
         return self.sess.run(self.fwd_op, feed_dict=fwd_dict)
 
@@ -387,9 +408,16 @@ class PairSampler(object):
             for inds_batch in inds_batcher:
                 user_inds_batch = self.xn_coo.row[inds_batch]
                 pos_item_inds_batch = self.xn_coo.col[inds_batch]
-                neg_item_inds_batch = self.get_negs(
-                    user_inds_batch=user_inds_batch,
-                    pos_item_inds_batch=pos_item_inds_batch,)
+                if self.method == 'adaptive_warp':
+                    neg_item_inds_batch, first_violator_inds = self.get_negs(
+                        user_inds_batch=user_inds_batch,
+                        pos_item_inds_batch=pos_item_inds_batch,)
+                    misc_feed_d = {'first_violator_inds': first_violator_inds}
+                else:
+                    neg_item_inds_batch = self.get_negs(
+                        user_inds_batch=user_inds_batch,
+                        pos_item_inds_batch=pos_item_inds_batch,)
+                    misc_feed_d = None
 
                 user_feed_d = self.user_feed_via_inds(user_inds_batch)
                 pos_item_feed_d = self.item_feed_via_inds(pos_item_inds_batch)
@@ -401,6 +429,7 @@ class PairSampler(object):
                     user_feed_d,
                     pos_item_feed_d, neg_item_feed_d,
                     context_feed_d,
+                    misc_feed_d=misc_feed_d,
                     input_pair_d=self.input_pair_d_usage,
                 )
                 yield feed_pair_dict
@@ -428,9 +457,16 @@ class PairSampler(object):
                 # Select random known pos for user
                 # pos_item_inds_batch = self.xn_coo.col[inds_batch]
                 pos_item_inds_batch = np.array(pos_l)
-                neg_item_inds_batch = self.get_negs(
-                    user_inds_batch=user_inds_batch,
-                    pos_item_inds_batch=pos_item_inds_batch,)
+                if self.method == 'adaptive_warp':
+                    neg_item_inds_batch, first_violator_inds = self.get_negs(
+                        user_inds_batch=user_inds_batch,
+                        pos_item_inds_batch=pos_item_inds_batch,)
+                    misc_feed_d = {'first_violator_inds': first_violator_inds}
+                else:
+                    neg_item_inds_batch = self.get_negs(
+                        user_inds_batch=user_inds_batch,
+                        pos_item_inds_batch=pos_item_inds_batch,)
+                    misc_feed_d = None
 
                 user_feed_d = self.user_feed_via_inds(user_inds_batch)
                 pos_item_feed_d = self.item_feed_via_inds(pos_item_inds_batch)
@@ -441,6 +477,7 @@ class PairSampler(object):
                     user_feed_d,
                     pos_item_feed_d, neg_item_feed_d,
                     context_feed_d={},
+                    misc_feed_d=misc_feed_d,
                     input_pair_d=self.input_pair_d_usage,
                 )
                 yield feed_pair_dict
