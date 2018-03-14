@@ -2,7 +2,9 @@ import tensorflow as tf
 from tensorflow.contrib.layers import \
     fully_connected, l2_regularizer, dropout, batch_norm
 from typing import Dict
+from collections import ChainMap
 
+from tophat.constants import FGroup
 from tophat.embedding import EmbeddingMap
 from tophat.utils.xn_utils import \
     preset_interactions, kernel_via_xn_sets, muls_via_xn_sets
@@ -37,17 +39,12 @@ class BilinearNet(object):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, embeddings_context, biases = \
-            self.embedding_map.look_up(input_xn_d)
-
-        embs_all = {**embeddings_user,
-                    **embeddings_item,
-                    **embeddings_context}
+        embs_by_group, biases = self.embedding_map.look_up(input_xn_d)
+        embs_all = ChainMap(*embs_by_group.values())
 
         fields_d = {
-            'user': self.embedding_map.user_cat_cols,
-            'item': self.embedding_map.item_cat_cols,
-            'context': self.embedding_map.context_cat_cols,
+            fg: self.embedding_map.cat_cols[fg]
+            for fg in [FGroup.USER, FGroup.ITEM, FGroup.CONTEXT]
         }
 
         interaction_sets = preset_interactions(
@@ -149,9 +146,8 @@ class BilinearNetWithNum(BilinearNet):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, embeddings_context, biases = \
-            self.embedding_map.look_up(
-            input_xn_d)
+        embs_by_group, biases = self.embedding_map.look_up(input_xn_d)
+
         if self.embedding_map.vis_emb_user_col:
             emb_user_vis = tf.nn.embedding_lookup(
                 self.embedding_map.user_vis,
@@ -186,15 +182,15 @@ class BilinearNetWithNum(BilinearNet):
             }
 
         # TODO: temp assume num are item features (not vbpr)
-        embeddings_item.update(num_emb_d)
+        embs_by_group[FGroup.ITEM].update(num_emb_d)
 
-        embs_all = {**embeddings_user,
-                    **embeddings_item,
-                    **embeddings_context}
+        embs_all = ChainMap(*embs_by_group.values())
 
         fields_d = {
-            'user': self.embedding_map.user_cat_cols + user_num_cols,
-            'item': self.embedding_map.item_cat_cols + item_num_cols,
+            FGroup.USER:
+                self.embedding_map.cat_cols[FGroup.USER] + user_num_cols,
+            FGroup.ITEM:
+                self.embedding_map.cat_cols[FGroup.ITEM] + item_num_cols,
         }
 
         interaction_sets = preset_interactions(
@@ -294,22 +290,19 @@ class BilinearNetWithNumFC(BilinearNet):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embeddings_user, embeddings_item, embeddings_context, biases = self.embedding_map.look_up(
-            input_xn_d)
+        embs_by_group, biases = self.embedding_map.look_up(input_xn_d)
         # bias not used
 
         num_emb_d = {
-            feat_name: input_xn_d[feat_name] for feat_name in self.num_meta.keys()
+            feat_name: input_xn_d[feat_name]
+            for feat_name in self.num_meta.keys()
         }
 
-        embs_all = {**embeddings_user,
-                    **embeddings_item,
-                    **embeddings_context,
-                    **num_emb_d}
+        embs_all = ChainMap(*embs_by_group.values(), num_emb_d)
 
         fields_d = {
-            'user': self.embedding_map.user_cat_cols,
-            'item': self.embedding_map.item_cat_cols,
+            fg: self.embedding_map.cat_cols[fg]
+            for fg in [FGroup.USER, FGroup.ITEM]
         }
 
         interaction_sets = preset_interactions(

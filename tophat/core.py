@@ -75,18 +75,18 @@ class FactModel(object):
 
         return pair_dict_via_ftypemeta(
             user_ftypemeta={
-                FType.CAT: self.net.embedding_map.user_cat_cols,
+                FType.CAT: self.net.embedding_map.cat_cols[FGroup.USER],
                 # FType.NUM: [],
             },
             item_ftypemeta={
-                FType.CAT: self.net.embedding_map.item_cat_cols,
+                FType.CAT: self.net.embedding_map.cat_cols[FGroup.ITEM],
                 # TODO: assume for now that all num feats are item-related
                 #   (else, need extra book-keeping)
                 FType.NUM: list(self.net.num_meta.items())
                 if hasattr(self.net, 'num_meta') else [],
             },
             context_ftypemeta={
-                FType.CAT: self.net.embedding_map.context_cat_cols,
+                FType.CAT: self.net.embedding_map.cat_cols[FGroup.CONTEXT],
                 # FType.NUM: [],
             },
             batch_size=batch_size)
@@ -99,20 +99,23 @@ class FactModel(object):
 
         """
 
+        def input_by_prefix(d, prefixes):
+            """Filter input dictionary by prefix condition on key"""
+            return {k.split(TAG_DELIM, 1)[-1]: v
+                    for k, v in d.items()
+                    if k.startswith(tuple(prefixes))}
+
         with tf.name_scope('model'):
             # Split up input into pos & neg interaction
-            pos_input_d = {k.split(TAG_DELIM, 1)[-1]: v
-                           for k, v in self.input_pair_d.items()
-                           if k.startswith(USER_VAR_TAG + TAG_DELIM)
-                           or k.startswith(POS_VAR_TAG + TAG_DELIM)
-                           or k.startswith(CONTEXT_VAR_TAG + TAG_DELIM)
-                           }
-            neg_input_d = {k.split(TAG_DELIM, 1)[-1]: v
-                           for k, v in self.input_pair_d.items()
-                           if k.startswith(USER_VAR_TAG + TAG_DELIM)
-                           or k.startswith(NEG_VAR_TAG + TAG_DELIM)
-                           or k.startswith(CONTEXT_VAR_TAG + TAG_DELIM)
-                           }
+            shared_prefixes = {
+                USER_VAR_TAG + TAG_DELIM,
+                CONTEXT_VAR_TAG + TAG_DELIM,
+            }
+            pos_prefixes = {POS_VAR_TAG + TAG_DELIM}.union(shared_prefixes)
+            neg_prefixes = {NEG_VAR_TAG + TAG_DELIM}.union(shared_prefixes)
+
+            pos_input_d = input_by_prefix(self.input_pair_d, pos_prefixes)
+            neg_input_d = input_by_prefix(self.input_pair_d, neg_prefixes)
 
             with tf.name_scope('positive'):
                 pos_score = tf.identity(self.forward(
@@ -125,13 +128,13 @@ class FactModel(object):
                 f'{MISC_TAG}.first_violator_inds', None)
 
             with tf.name_scope('loss'):
-                # TODO: this should be tied to the sampling technique
+                # Note: this could be tied to the sampling technique
                 return self.loss_fn(pos_score, neg_score,
                                     first_violation, self.n_items,
                                     )
 
     def training(self, loss) -> tf.Operation:
-        """
+        """Makes the training operation and attaches some summary values
 
         Args:
             loss: Loss operation

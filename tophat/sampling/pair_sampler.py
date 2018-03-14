@@ -63,7 +63,7 @@ def feed_via_pair(
 
 def feed_via_inds(inds_batch: Sequence[int],
                   cols: Sequence[str],
-                  codes_arr: np.array,
+                  codes_arr: Optional[np.array],
                   num_arr: np.array,
                   num_key: Optional[str],
                   ):
@@ -115,10 +115,10 @@ class PairSampler(object):
     """
     def __init__(self,
                  interactions_df: pd.DataFrame,
-                 cols_d: Dict[str, str],
-                 cats_d: Dict[str, List],
-                 feat_codes_df_d: Dict[str, pd.DataFrame],
-                 feats_d_d: Dict[str, Dict[FType, pd.DataFrame]],
+                 cols_d: Dict[FGroup, str],
+                 cats_d: Dict[FGroup, List],
+                 feat_codes_df_d: Dict[FGroup, pd.DataFrame],
+                 feats_d_d: Dict[FGroup, Dict[FType, pd.DataFrame]],
                  input_pair_d: Dict[str, tf.Tensor],
                  batch_size: int=1024,
                  shuffle: bool=True,
@@ -134,26 +134,23 @@ class PairSampler(object):
         self.seed = seed
         np.random.seed(self.seed)
 
-        user_col = cols_d['user']
-        item_col = cols_d['item']
+        user_col = cols_d[FGroup.USER]
+        item_col = cols_d[FGroup.ITEM]
 
         # Index alignment
-        user_feats_codes_df = feat_codes_df_d['user'].loc[cats_d[user_col]]
-        item_feats_codes_df = feat_codes_df_d['item'].loc[cats_d[item_col]]
-
-        # TODO: some switch for context existence
-        # context features are already aligned with `interaction_df`
-        #   by construction
-        context_feat_codes_df = feat_codes_df_d.get('context')
+        feats_codes_dfs = {
+            fg: feat_codes_df_d[fg].loc[cats_d[cols_d[fg]]]
+            for fg in [FGroup.USER, FGroup.ITEM]
+        }
 
         # Grab underlying numerical feature array(s)
         self.user_num_feats_arr = None
         self.item_num_feats_arr = None
-        if feats_d_d and FType.NUM in feats_d_d['user']:
-            self.user_num_feats_arr = feats_d_d['user'][FType.NUM].loc[cats_d[
+        if feats_d_d and FType.NUM in feats_d_d[FGroup.USER]:
+            self.user_num_feats_arr = feats_d_d[FGroup.USER][FType.NUM].loc[cats_d[
                     user_col]].values
-        if feats_d_d and FType.NUM in feats_d_d['item']:
-            self.item_num_feats_arr = feats_d_d['item'][FType.NUM].loc[cats_d[
+        if feats_d_d and FType.NUM in feats_d_d[FGroup.ITEM]:
+            self.item_num_feats_arr = feats_d_d[FGroup.ITEM][FType.NUM].loc[cats_d[
                     item_col]].values
         # TODO: NUM not supported for context right now
 
@@ -224,14 +221,20 @@ class PairSampler(object):
             # index for each pos interaction
             self.shuffle_inds = np.arange(len(self.xn_coo.data))
 
-        self.user_feats_codes_arr = user_feats_codes_df.values
-        self.item_feats_codes_arr = item_feats_codes_df.values
-        self.context_feats_codes_arr = context_feat_codes_df.values \
-            if context_feat_codes_df is not None else None
-        self.user_cols = user_feats_codes_df.columns
-        self.item_cols = item_feats_codes_df.columns
-        self.context_cols = context_feat_codes_df.columns \
-            if context_feat_codes_df is not None else []
+        self.feats_codes_arrs = {
+            fg: df.values if hasattr(df, 'values') else None
+            for fg, df in feats_codes_dfs.items()
+        }
+        self.code_df_cols = {
+            fg: df.columns if hasattr(df, 'columns') else None
+            for fg, df in feats_codes_dfs.items()
+        }
+        self.user_cols = feats_codes_dfs[FGroup.USER].columns
+        self.item_cols = feats_codes_dfs[FGroup.ITEM].columns
+        self.context_cols = feats_codes_dfs[FGroup.CONTEXT].columns \
+            if (
+            FGroup.CONTEXT in feats_codes_dfs and
+            feats_codes_dfs[FGroup.CONTEXT] is not None) else []
 
         if 'adaptive' in self.method:
             self.max_sampled = 32  # for WARP
@@ -259,20 +262,10 @@ class PairSampler(object):
                          ):
         return cls(
             interactions_df=train_data_loader.interactions_df,
-            cols_d={
-                'user': train_data_loader.user_col,
-                'item': train_data_loader.item_col,
-            },
+            cols_d=train_data_loader.cols,
             cats_d=train_data_loader.cats_d,
-            feat_codes_df_d={
-                'user': train_data_loader.user_feats_codes_df,
-                'item': train_data_loader.item_feats_codes_df,
-                'context': train_data_loader.context_feats_codes_df,
-            },
-            feats_d_d={
-                'user': train_data_loader.user_feats_d,
-                'item': train_data_loader.item_feats_d,
-            },
+            feat_codes_df_d=train_data_loader.feats_codes_df,
+            feats_d_d=train_data_loader.feats_by_group,
             input_pair_d=input_pair_d,
             batch_size=batch_size,
             shuffle=shuffle,
@@ -374,24 +367,24 @@ class PairSampler(object):
 
     def user_feed_via_inds(self, user_inds_batch):
         return feed_via_inds(user_inds_batch,
-                             self.user_cols,
-                             self.user_feats_codes_arr,
+                             self.code_df_cols[FGroup.USER],
+                             self.feats_codes_arrs[FGroup.USER],
                              self.user_num_feats_arr,
                              num_key='user_num_feats',
                              )
 
     def item_feed_via_inds(self, item_inds_batch):
         return feed_via_inds(item_inds_batch,
-                             self.item_cols,
-                             self.item_feats_codes_arr,
+                             self.code_df_cols[FGroup.ITEM],
+                             self.feats_codes_arrs[FGroup.ITEM],
                              self.item_num_feats_arr,
                              num_key='item_num_feats',
                              )
 
     def context_feed_via_inds(self, inds_batch):
         return feed_via_inds(inds_batch,
-                             self.context_cols,
-                             self.context_feats_codes_arr,
+                             self.code_df_cols.get(FGroup.CONTEXT, None),
+                             self.feats_codes_arrs.get(FGroup.CONTEXT, None),
                              num_arr=None,
                              num_key=None,
                              )
@@ -503,14 +496,21 @@ class PairSampler(object):
 
         if not hasattr(user_inds, '__iter__'):
             user_inds = [user_inds] * len(item_inds)
-        user_feed_d = dict(zip(self.user_cols,
-                               self.user_feats_codes_arr[user_inds, :].T))
-        item_feed_d = dict(zip(self.item_cols,
-                               self.item_feats_codes_arr[item_inds, :].T))
-        feed_fwd_dict = {
-            **{fwd_d[f'{feat_name}']: data_in
-               for feat_name, data_in in user_feed_d.items()},
-            **{fwd_d[f'{feat_name}']: data_in
-               for feat_name, data_in in item_feed_d.items()},
+
+        inds_d = {
+            FGroup.USER: user_inds,
+            FGroup.ITEM: item_inds,
         }
+
+        feed_fwd_dict = {}
+        for fg in [FGroup.USER, FGroup.ITEM]:
+            inds = inds_d[fg]
+            feed_d = dict(zip(self.code_df_cols[fg],
+                              self.feats_codes_arrs[fg][inds, :].T))
+
+            feed_fwd_dict.update(
+                {fwd_d[f'{feat_name}']: data_in
+                 for feat_name, data_in in feed_d.items()}
+            )
+
         return feed_fwd_dict

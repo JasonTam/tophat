@@ -3,7 +3,7 @@ import pandas as pd
 from collections import defaultdict
 
 from tophat.data import FeatureSource, InteractionsSource
-from tophat.constants import FType
+from tophat.constants import FType, FGroup
 from lightfm.datasets.movielens import fetch_movielens
 from jobs.fit_job import FitJob
 
@@ -11,13 +11,14 @@ SEED = 322
 
 
 def movielens_cfg():
-    data = fetch_movielens(indicator_features=False,
-                           genre_features=True,
-                           min_rating=5.0,  # Pretend 5-star is an implicit 'like'
-                           download_if_missing=True,
-                           )
+    data = fetch_movielens(
+        indicator_features=False,
+        genre_features=True,
+        min_rating=5.0,  # Pretend 5-star is an implicit 'like'
+        download_if_missing=True,
+    )
 
-    # Converting to Tophat data containers
+    # Converting to tophat data containers
     xn_train = InteractionsSource(
         path='via_lightfm.datasets.movielens',
         user_col='user_id',
@@ -52,27 +53,36 @@ def movielens_cfg():
     fit_params = {
         'emb_dim': 30,
         'batch_size': 128,
-        'n_steps': 1500+1,
-        'log_every': 100,
-        'eval_every': 500,
+        'n_steps': 5000+1,
+        'log_every': 500,
+        'eval_every': 1000,
         'save_every': 99999,
 
+        'l2_emb': 1e-5,
+
         'loss_fn': 'bpr',
-        'sample_method': 'uniform_verified',
+        'sample_method': 'uniform',
         'sample_prefetch': 5,
     }
 
     data_params = {
         'interactions_train': xn_train,
         'interactions_val': xn_test,
-        'user_features': [],
-        'item_features': [genre_feats],
 
-        'val_user_features': [],
-        'val_item_features': [genre_feats],
+        'group_features': {
+            FGroup.USER: [],
+            FGroup.ITEM: [genre_feats],
+        },
 
-        'user_specific_feature': True,
-        'item_specific_feature': True,
+        'val_group_features': {
+            FGroup.USER: [],
+            FGroup.ITEM: [genre_feats],
+        },
+
+        'specific_feature': {
+            FGroup.USER: True,
+            FGroup.ITEM: True,
+        },
     }
 
     validation_params = {

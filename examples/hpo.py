@@ -91,7 +91,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Example of hyper-parameter optimization')
     parser.add_argument('--config', help='Load config file via path',
-                        default=f'config/fit_config_hyperopt_local2.py',
+                        default=f'config/fit_config_hyperopt_local.py',
                         nargs='?')
     parser.add_argument('--path_log', help='Where to log params and scores',
                         default='/tmp/hpo_tophat.csv', nargs='?',)

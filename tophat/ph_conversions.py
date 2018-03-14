@@ -1,5 +1,5 @@
 import tensorflow as tf
-from typing import Iterable, Union
+from typing import Iterable
 from tophat.constants import *
 
 
@@ -55,7 +55,7 @@ def pair_dict_via_cols(user_cat_cols: Iterable[str],
 def ph_dict_via_feats(feat_names: List[str],
                       dtype: Union[str, type],
                       batch_size: int=None,
-                      input_size=1,
+                      input_size: int=1,
                       tag: str=None,
                       ) -> Dict[str, tf.Tensor]:
     """Creates placeholders based on desired features
@@ -114,11 +114,12 @@ def ph_via_ftypemeta(ftypemeta: FtypeMeta,
                               tag=tag)
     if FType.NUM in ftypemeta:
         num_ph_l = [
-            ph_dict_via_feats([tup[0]],
+            ph_dict_via_feats([feat_name],
                               dtype=tf.float32,
                               batch_size=batch_size,
-                              tag=tag, input_size=tup[1])
-            for tup in ftypemeta[FType.NUM]]
+                              input_size=feat_size,
+                              tag=tag)
+            for feat_name, feat_size in ftypemeta[FType.NUM]]
         num_d = {k: v for d in num_ph_l for k, v in d.items()}
     else:
         num_d = {}

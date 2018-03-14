@@ -1,9 +1,9 @@
 import tensorflow as tf
 import itertools as it
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Any, Mapping
 
 
-def preset_interactions(fields_d: Dict[str, Iterable[str]],
+def preset_interactions(fields_d: Dict[Any, Iterable[str]],
                         interaction_type: str='inter',
                         max_order: int=2
                         ) -> Iterable[frozenset]:
@@ -44,7 +44,7 @@ def preset_interactions(fields_d: Dict[str, Iterable[str]],
 
 
 def muls_via_xn_sets(interaction_sets: Iterable[frozenset],
-                     emb_d: Dict[str, tf.Tensor]
+                     emb_d: Mapping[Any, tf.Tensor]
                      ) -> Dict[frozenset, tf.Tensor]:
     """ Computes element-wise product of embeddings (with node-reuse)
     
@@ -101,7 +101,7 @@ def kernel_via_xn_muls(xn_nodes: Dict[frozenset, tf.Tensor]) -> tf.Tensor:
 
 
 def kernel_via_xn_sets(interaction_sets: Iterable[frozenset],
-                       emb_d: Dict[str, tf.Tensor]) -> tf.Tensor:
+                       emb_d: Mapping[Any, tf.Tensor]) -> tf.Tensor:
     """Computes arbitrary order interaction terms
     Reuses lower order terms
     

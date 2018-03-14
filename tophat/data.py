@@ -8,7 +8,7 @@ from lib_cerebro_py.log import logger, log_shape_or_npartitions
 from typing import Optional, Iterable, Tuple, Dict, List, Any, Sized, \
     Sequence, Union
 
-from tophat.constants import FType
+from tophat.constants import FType, FGroup
 from tophat.utils.pp_utils import append_dt_extracts
 
 
@@ -200,64 +200,57 @@ class TrainDataLoader(object):
 
     Args:
         interactions_train: training interactions source
-        user_features: user feature sources
-        item_features: item feature sources
-        user_specific_feature: include the user-specific feature
-        item_specific_feature: include the item-specific feature
+        group_features: feature sources keyed by group (user, item)
+        specific_feature: include the primary_id-specific feature
         context_cols: columns to consider interaction context
         batch_size: batch size
     """
 
     def __init__(self,
                  interactions_train: InteractionsSource,
-                 user_features: Optional[Iterable[FeatureSource]],
-                 item_features: Optional[Iterable[FeatureSource]],
-                 user_specific_feature: bool=True,
-                 item_specific_feature: bool=True,
+                 group_features: Dict[FGroup, Optional[Iterable[FeatureSource]]],
+                 specific_feature: Dict[FGroup, bool]=None,
                  context_cols: Optional[Iterable[str]]=None,
                  batch_size: int=128,
                  ):
 
         self.batch_size = batch_size
         self.activity_col = interactions_train.activity_col
-        self.user_col = interactions_train.user_col
-        self.item_col = interactions_train.item_col
+        self.cols = {
+            FGroup.USER: interactions_train.user_col,
+            FGroup.ITEM: interactions_train.item_col,
+        }
 
-        self.user_feats_codes_df = None
-        self.item_feats_codes_df = None
-        self.context_feats_codes_df = None
-        self.user_num_feats_df = None
-        self.item_num_feats_df = None
+        self.feats_codes_df: Dict[FGroup, pd.DataFrame] = {}
+        self.num_feats_df: Dict[FGroup, pd.DataFrame] = {}
         self.num_meta = None
 
-        self.interactions_df, self.user_feats_d, self.item_feats_d = \
+        if specific_feature is None:
+            specific_feature = defaultdict(lambda: True)
+
+        self.interactions_df, self.feats_by_group = \
             load_simple(
                 interactions_train,
-                user_features,
-                item_features,
-                user_specific_feature,
-                item_specific_feature,
+                group_features,
+                specific_feature,
             )
 
-        # Process Categorical
-        self.user_cat_cols = self.user_feats_d[FType.CAT].columns.tolist()
-        self.item_cat_cols = self.item_feats_d[FType.CAT].columns.tolist()
+        self.cat_cols = {}
+        self.cats_d = {}
+        for fgroup in [FGroup.USER, FGroup.ITEM]:
+            col = self.cols[fgroup]
+            feats = self.feats_by_group[fgroup]
+            self.cat_cols[fgroup] = feats[FType.CAT].columns.tolist()
 
-        self.cats_d = {
-            **{feat_name: self.user_feats_d[FType.CAT][feat_name]
-                .cat.categories.tolist()
-               for feat_name in self.user_cat_cols},
-            **{feat_name: self.item_feats_d[FType.CAT][feat_name]
-                .cat.categories.tolist()
-               for feat_name in self.item_cat_cols},
-        }
-        # If the user or item ids are not present in feature tables
-        if self.user_col not in self.cats_d:
-            self.cats_d[self.user_col] = self.interactions_df[self.user_col]\
-                .cat.categories.tolist()
-        if self.item_col not in self.cats_d:
-            self.cats_d[self.item_col] = self.interactions_df[self.item_col]\
-                .cat.categories.tolist()
+            self.cats_d.update({
+                feat_name: feats[FType.CAT][feat_name].cat.categories.tolist()
+                for feat_name in self.cat_cols[fgroup]
+            })
+
+            # If the user or item ids are not present in feature tables
+            if col not in self.cats_d:
+                self.cats_d[col] = self.interactions_df[col]\
+                    .cat.categories.tolist()
 
         self.context_cat_cols = context_cols or []
         if self.context_cat_cols:
@@ -269,41 +262,56 @@ class TrainDataLoader(object):
         self.make_feat_codes()
         self.process_num()
 
+        # Alias Attributes
+        self.user_col = self.cols[FGroup.USER]
+        self.item_col = self.cols[FGroup.ITEM]
+        self.user_feats_codes_df = self.feats_codes_df[FGroup.USER]
+        self.item_feats_codes_df = self.feats_codes_df[FGroup.ITEM]
+        self.context_feats_codes_df = self.feats_codes_df[FGroup.CONTEXT] \
+            if FGroup.CONTEXT in self.feats_codes_df else None
+        self.user_num_feats_df = self.num_feats_df[FGroup.USER]
+        self.item_num_feats_df = self.num_feats_df[FGroup.ITEM]
+        self.user_cat_cols = self.cat_cols[FGroup.USER]
+        self.item_cat_cols = self.cat_cols[FGroup.ITEM]
+        self.user_feats_d = self.feats_by_group[FGroup.USER]
+        self.item_feats_d = self.feats_by_group[FGroup.ITEM]
+
     def export_data_encoding(self):
-        return self.cats_d, self.user_feats_codes_df, self.item_feats_codes_df
+        return (self.cats_d,
+                self.feats_codes_df[FGroup.USER],
+                self.feats_codes_df[FGroup.ITEM],
+                )
 
     def make_feat_codes(self):
         # Convert all categorical cols to corresponding codes
-        self.user_feats_codes_df = self.user_feats_d[FType.CAT].copy()
-        for col in self.user_feats_codes_df.columns:
-            self.user_feats_codes_df[col] = self.user_feats_codes_df[col]\
-                .cat.codes
-        self.item_feats_codes_df = self.item_feats_d[FType.CAT].copy()
-        for col in self.item_feats_codes_df.columns:
-            self.item_feats_codes_df[col] = self.item_feats_codes_df[col]\
-                .cat.codes
+        for fgroup in [FGroup.USER, FGroup.ITEM]:
+            self.feats_codes_df[fgroup] = \
+                self.feats_by_group[fgroup][FType.CAT].copy()
+            for col in self.feats_codes_df[fgroup].columns:
+                self.feats_codes_df[fgroup][col] = \
+                    self.feats_codes_df[fgroup][col].cat.codes
 
         if self.context_cat_cols:
-            self.context_feats_codes_df = \
+            self.feats_codes_df[FGroup.CONTEXT] = \
                 self.interactions_df[self.context_cat_cols].copy()
-            for col in self.context_feats_codes_df.columns:
-                self.context_feats_codes_df[col] = \
-                    self.context_feats_codes_df[col].cat.codes
+            for col in self.feats_codes_df[FGroup.CONTEXT].columns:
+                self.feats_codes_df[FGroup.CONTEXT][col] = \
+                    self.feats_codes_df[FGroup.CONTEXT][col].cat.codes
 
     def process_num(self):
         # Process numerical metadata
         # TODO: assuming numerical features aggregated into 1 table for now
         # ^ else, `self.user_feats_d[FType.NUM]: Iterable`
-        self.user_num_feats_df = self.user_feats_d[FType.NUM] \
-            if FType.NUM in self.user_feats_d else None
-        self.item_num_feats_df = self.item_feats_d[FType.NUM] \
-            if FType.NUM in self.item_feats_d else None
-        # Gather metadata (size) of num feats
+
         self.num_meta = {}
-        if self.user_num_feats_df is not None:
-            self.num_meta['user_num_feats'] = self.user_num_feats_df.shape[1]
-        if self.item_num_feats_df is not None:
-            self.num_meta['item_num_feats'] = self.item_num_feats_df.shape[1]
+        for fgroup in [FGroup.USER, FGroup.ITEM]:
+            self.num_feats_df[fgroup] = \
+                self.feats_by_group[fgroup][FType.NUM] \
+                    if FType.NUM in self.feats_by_group[fgroup] else None
+
+            # Gather metadata (size) of num feats
+            if self.num_feats_df[fgroup] is not None:
+                self.num_meta[fgroup] = self.num_feats_df[fgroup].shape[1]
 
 
 def cast_cat(feats_d: Dict[FType, pd.DataFrame],
@@ -336,22 +344,19 @@ def cast_cat(feats_d: Dict[FType, pd.DataFrame],
 
 def load_simple(
         interactions_src: InteractionsSource,
-        user_features_srcs: Optional[Iterable[FeatureSource]],
-        item_features_srcs: Optional[Iterable[FeatureSource]],
-        user_specific_feature: bool=True,
-        item_specific_feature: bool=True,
+        features_srcs: Dict[FGroup, Optional[Iterable[FeatureSource]]],
+        specific_feature: Dict[FGroup, bool]=True,
         existing_cats_d: Optional[Dict[str, List[Any]]]=None,
-) -> Tuple[pd.DataFrame, Dict[FType, pd.DataFrame], Dict[FType, pd.DataFrame]]:
+) -> Tuple[pd.DataFrame, Dict[FGroup, Dict[FType, pd.DataFrame]]]:
     """Stand-in loader mostly for local testing
 
     Args:
         interactions_src: Interactions data source
-        user_features_srcs: User feature data source(s)
-            if `None`, user_id will be the sole user feature
-        item_features_srcs: Item feature data source(s)
-            if `None`, item_id will be the sole item feature
-        user_specific_feature: If `True`, includes a user_id as a feature
-        item_specific_feature: If `True`, includes a item_id as a feature
+        features_srcs: Feature data source(s)
+            keyed by group (user, item)
+            if `None`, the primary id will be the sole feature
+        specific_feature: If `True`, includes a primary id as a feature for
+            that group (user, item)
         existing_cats_d: Optional dictionary of existing categories
 
     Returns:
@@ -359,73 +364,69 @@ def load_simple(
     """
 
     interactions_df = interactions_src.load().data
-    user_col = interactions_src.user_col
-    item_col = interactions_src.item_col
 
-    user_feats_d = {}
-    item_feats_d = {}
-    if user_features_srcs:
-        user_feats_d.update(load_many_srcs(user_features_srcs))
-    if not user_features_srcs or not any([src.feature_type == FType.CAT
-                                          for src in user_features_srcs]):
-        user_feats_d[FType.CAT] = pd.DataFrame(
-            index=interactions_df[user_col].drop_duplicates())
-        user_specific_feature = True
-    if item_features_srcs:
-        item_feats_d.update(load_many_srcs(item_features_srcs))
-    if not item_features_srcs or not any([src.feature_type == FType.CAT
-                                          for src in item_features_srcs]):
-        item_feats_d[FType.CAT] = pd.DataFrame(
-            index=interactions_df[item_col].drop_duplicates())
-        item_specific_feature = True
+    cols = {
+        FGroup.USER: interactions_src.user_col,
+        FGroup.ITEM: interactions_src.item_col,
+    }
+    feats_by_group = {}
 
-    # TODO: Extreme simplifying assumption (should be handled better):
-    #     This gets rid of missing side features
-    user_feats_d[FType.CAT].dropna(axis=0, inplace=True)
-    item_feats_d[FType.CAT].dropna(axis=0, inplace=True)
+    for fgroup in [FGroup.USER, FGroup.ITEM]:
+        src_l = features_srcs[fgroup]
+        col = cols[fgroup]
+        feats = {}
+
+        if src_l:
+            feats.update(load_many_srcs(src_l))
+        if not src_l or not any([src.feature_type == FType.CAT
+                                 for src in src_l]):
+            feats[FType.CAT] = pd.DataFrame(
+                index=interactions_df[col].drop_duplicates())
+            specific_feature[fgroup] = True
+
+        # TODO: Extreme simplifying assumption (should be handled better):
+        #     This gets rid of missing side features
+        feats[FType.CAT].dropna(axis=0, inplace=True)
+
+        feats_by_group[fgroup] = feats
 
     # TODO: Another simplifying assumption:
     interactions_df, user_feats_d, item_feats_d, = simplifying_assumption(
         interactions_df,
-        user_feats_d, item_feats_d,
-        user_col, item_col,
+        feats_by_group[FGroup.USER], feats_by_group[FGroup.ITEM],
+        cols[FGroup.USER], cols[FGroup.ITEM],
     )
 
-    # index alignment for numerical features
-    if FType.NUM in user_feats_d:
-        user_feats_d[FType.NUM] = user_feats_d[FType.NUM] \
-            .loc[interactions_df[user_col].unique()]
-    if FType.NUM in item_feats_d:
-        item_feats_d[FType.NUM] = item_feats_d[FType.NUM] \
-            .loc[interactions_df[item_col].unique()]
+    for fgroup in [FGroup.USER, FGroup.ITEM]:
+        feats = feats_by_group[fgroup]
+        col = cols[fgroup]
+        # index alignment for numerical features
+        if FType.NUM in feats:
+            feats[FType.NUM] = feats[FType.NUM] \
+                .loc[interactions_df[col].unique()]
 
-    # Use in the index as a feature (user and item specific eye feature)
-    if user_specific_feature:
-        user_feats_d[FType.CAT][user_feats_d[FType.CAT].index.name] = \
-            user_feats_d[FType.CAT].index
-    if item_specific_feature:
-        item_feats_d[FType.CAT][item_feats_d[FType.CAT].index.name] = \
-            item_feats_d[FType.CAT].index
+        # Use in the index as a feature (user and item specific eye feature)
+        if specific_feature[fgroup]:
+            feats[FType.CAT][feats[FType.CAT].index.name] = \
+                feats[FType.CAT].index
 
-    # Cast categorical
-    user_feats_d = cast_cat(user_feats_d, existing_cats_d)
-    item_feats_d = cast_cat(item_feats_d, existing_cats_d)
+        # Cast categorical
+        feats = cast_cat(feats, existing_cats_d)
 
-    existing_user_cats = user_feats_d[FType.CAT][user_col].cat.categories\
-        if user_col in user_feats_d[FType.CAT] else None
-    interactions_df[user_col] = interactions_df[user_col].astype(
-        CategoricalDtype(existing_user_cats))
+        existing_fgroup_cats = feats[FType.CAT][col].cat.categories \
+            if col in feats[FType.CAT] else None
+        interactions_df[col] = interactions_df[col].astype(
+            CategoricalDtype(existing_fgroup_cats))
 
-    existing_item_cats = item_feats_d[FType.CAT][item_col].cat.categories\
-        if item_col in item_feats_d[FType.CAT] else None
-    interactions_df[item_col] = interactions_df[item_col].astype(
-        CategoricalDtype(existing_item_cats))
+        feats_by_group[fgroup] = feats
 
     log_shape_or_npartitions(interactions_df, 'interactions_df')
-    log_shape_or_npartitions(user_feats_d[FType.CAT], 'user_feats_df')
-    log_shape_or_npartitions(item_feats_d[FType.CAT], 'item_feats_df')
+    log_shape_or_npartitions(
+        feats_by_group[FGroup.USER][FType.CAT], 'user features')
+    log_shape_or_npartitions(
+        feats_by_group[FGroup.ITEM][FType.CAT], 'item_features')
 
-    return interactions_df, user_feats_d, item_feats_d
+    return interactions_df, feats_by_group
 
 
 def simplifying_assumption(interactions_df,

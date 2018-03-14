@@ -1,9 +1,10 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import itertools as it
 from tensorflow.contrib.tensorboard.plugins import projector
-from tophat.data import TrainDataLoader
 from tophat.metadata_proc import write_metadata_emb
+from tophat.constants import FGroup
 from typing import Iterable, Dict, Tuple, Optional, List, Any
 from collections import defaultdict
 
@@ -67,9 +68,11 @@ class EmbeddingMap(object):
 
         self.seed = seed
         self.cats_d = cats_d
-        self.user_cat_cols = user_cat_cols
-        self.item_cat_cols = item_cat_cols
-        self.context_cat_cols = context_cat_cols
+        self.cat_cols = {
+            FGroup.USER: user_cat_cols,
+            FGroup.ITEM: item_cat_cols,
+            FGroup.CONTEXT: context_cat_cols,
+        }
 
         # Regularization
         self.l1_bias = l1_bias
@@ -148,13 +151,9 @@ class EmbeddingMap(object):
                 )
 
     def look_up(self, input_xn_d
-                ) -> Tuple[
-        Dict[str, tf.Tensor],  # user
-        Dict[str, tf.Tensor],  # item
-        Dict[str, tf.Tensor],  # context
-        Dict[str, tf.Tensor],  # biases (no hierarchy)
-        # TODO: maybe better to have Dict[{user,item,context}-->Dict[featname, emb]] etc
-    ]:
+                ) -> Tuple[Dict[FGroup, Dict[str, tf.Tensor]],  # embs
+                           Dict[str, tf.Tensor],  # biases (no hierarchy)
+                           ]:
         """Looks up all the embeddings associated with a batch of interactions
         (user, item, context, and all biases)
         
@@ -166,30 +165,22 @@ class EmbeddingMap(object):
             Tuple of embeddings and biases
         """
 
-        embeddings_user = lookup_wrapper(
-            self.embeddings_d, input_xn_d, self.user_cat_cols,
-            'user_lookup', name_tmp='{}_emb',
-            feature_weights_d=self.feature_weights_d,
-        )
-        embeddings_item = lookup_wrapper(
-            self.embeddings_d, input_xn_d, self.item_cat_cols,
-            'item_lookup', name_tmp='{}_emb',
-            feature_weights_d=self.feature_weights_d,
-        )
-        embeddings_context = lookup_wrapper(
-            self.embeddings_d, input_xn_d, self.context_cat_cols,
-            'context_lookup', name_tmp='{}_emb',
-            feature_weights_d=self.feature_weights_d,
-        )
+        emb_lookup_d = {}
+
+        for fg, cols in self.cat_cols.items():
+            emb_lookup_d[fg] = lookup_wrapper(
+                self.embeddings_d, input_xn_d, cols,
+                f'{fg.value}_lookup', name_tmp='{}_emb',
+                feature_weights_d=self.feature_weights_d,
+            )
+
         biases = lookup_wrapper(
-            self.biases_d, input_xn_d, self.user_cat_cols + self.item_cat_cols + self.context_cat_cols,
-            # # TODO: Temp: No user bias (kinda unconventional)
-            # list(set(self.user_cat_cols).union(set(self.item_cat_cols)) - {'ops_user_id'}),
+            self.biases_d, input_xn_d, it.chain(*self.cat_cols.values()),
             'bias_lookup', name_tmp='{}_bias',
             feature_weights_d=self.feature_weights_d,
-                                       )
+        )
 
-        return embeddings_user, embeddings_item, embeddings_context, biases
+        return emb_lookup_d, biases
 
 
 def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
