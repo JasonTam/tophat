@@ -1,7 +1,8 @@
-from tophat import losses
-from tophat.ph_conversions import *
-from tophat.nets import *
 from typing import Dict, Optional
+
+from tophat import losses
+from tophat.nets.bilinear import *
+from tophat.utils.ph_conversions import *
 
 
 class FactModel(object):
@@ -17,7 +18,7 @@ class FactModel(object):
     """
 
     def __init__(self,
-                 net,
+                 net: BilinearNet,
                  batch_size,
                  loss_fn: losses.PairLossFn = losses.softplus_loss,
                  optimizer: tf.train.Optimizer = tf.train.AdamOptimizer(

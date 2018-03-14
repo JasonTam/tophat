@@ -1,13 +1,13 @@
 import tensorflow as tf
-from tensorflow.contrib.layers import \
-    fully_connected, l2_regularizer, dropout, batch_norm
-from typing import Dict
+from tensorflow.contrib.layers import l2_regularizer
+from typing import Dict, Callable
 from collections import ChainMap
 
 from tophat.constants import FGroup
 from tophat.embedding import EmbeddingMap
 from tophat.utils.xn_utils import \
     preset_interactions, kernel_via_xn_sets, muls_via_xn_sets
+from tophat.nets.fc import simple_fc
 
 
 class BilinearNet(object):
@@ -251,9 +251,10 @@ class BilinearNetWithNumFC(BilinearNet):
         embedding_map: Variables and metadata concerning categorical embeddings
         num_meta: Metadata concerning numerical data
             `feature_name -> dimensionality of input`
-        l2: l2 regularization scale of deep portion
         interaction_type: Type of preset interaction
             One of {'intra', 'inter'}
+        deep_net_fn: function to create deep portion of network
+        deep_reg: regularizer for deep portion of network
 
     References:
         .. [2] He, Xiangnan, et al. "Neural collaborative filtering." 
@@ -269,13 +270,15 @@ class BilinearNetWithNumFC(BilinearNet):
     def __init__(self,
                  embedding_map: EmbeddingMap,
                  num_meta: Dict[str, int]=None,
-                 l2=1e0,
                  interaction_type='inter',
+                 deep_net_fn: Callable=simple_fc,
+                 deep_reg=None,
                  ):
         BilinearNet.__init__(self, embedding_map, interaction_type)
 
         self.num_meta = num_meta or {}
-        self.regularizer = l2_regularizer(l2)
+        self.deep_net_fn = deep_net_fn
+        self.deep_reg = deep_reg
 
     def forward(self, input_xn_d: Dict[str, tf.Tensor]) -> tf.Tensor:
         """Forward inference step to score a user-item interaction
@@ -291,7 +294,6 @@ class BilinearNetWithNumFC(BilinearNet):
 
         # Handle sparse (embedding lookup of categorical features)
         embs_by_group, biases = self.embedding_map.look_up(input_xn_d)
-        # bias not used
 
         num_emb_d = {
             feat_name: input_xn_d[feat_name]
@@ -302,39 +304,25 @@ class BilinearNetWithNumFC(BilinearNet):
 
         fields_d = {
             fg: self.embedding_map.cat_cols[fg]
-            for fg in [FGroup.USER, FGroup.ITEM]
+            for fg in [FGroup.USER, FGroup.ITEM, FGroup.CONTEXT]
         }
 
         interaction_sets = preset_interactions(
             fields_d, interaction_type=self.interaction_type)
 
         with tf.name_scope('interaction_model'):
-            V = muls_via_xn_sets(interaction_sets, embs_all)
-            f_bi = tf.add_n([node for s, node in V.items() if len(s) > 1],
+            xn_muls = muls_via_xn_sets(interaction_sets, embs_all)
+            # Bi-Interaction (actually, we allow for >=2 interactions)
+            f_bi = tf.add_n([node for s, node in xn_muls.items()
+                             if len(s) > 1],
                             name='f_bi')
 
-        with tf.name_scope('deep'):
-            # x = tf.concat([embs_all[k] for k in sorted(embs_all)], axis=1)
-            x = tf.identity(f_bi, name='x')
+        contrib_deep = tf.identity(
+            self.deep_net_fn(f_bi, self.deep_reg, scope_name='deep'),
+            name='contrib_deep')
+        contrib_bias = tf.add_n(list(biases.values()), name='contrib_bias')
 
-            bn0 = batch_norm(x, decay=0.9)
-            drop0 = dropout(bn0, 0.5)
-
-            fc1 = fully_connected(drop0, 8, activation_fn=tf.nn.relu,
-                                  weights_regularizer=self.regularizer)
-            bn1 = batch_norm(fc1, decay=0.9)
-            drop1 = dropout(bn1, 0.8)
-            fc2 = fully_connected(drop1, 4, activation_fn=tf.nn.relu,
-                                  weights_regularizer=self.regularizer)
-            bn2 = batch_norm(fc2, decay=0.9)
-            drop2 = dropout(bn2, 0.8)
-            contrib_f = tf.squeeze(
-                fully_connected(drop2, 1, activation_fn=None),
-                name='score')
-
-            contrib_bias = tf.add_n(list(biases.values()), name='contrib_bias')
-
-        score = tf.add_n([contrib_f, contrib_bias], name='score')
+        score = tf.add_n([contrib_deep, contrib_bias], name='score')
 
         return score
 

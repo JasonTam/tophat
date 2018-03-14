@@ -58,7 +58,7 @@ def movielens_cfg():
         'eval_every': 1000,
         'save_every': 99999,
 
-        'l2_emb': 1e-5,
+        # 'l2_emb': 1e-5,
 
         'loss_fn': 'bpr',
         'sample_method': 'uniform',

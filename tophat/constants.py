@@ -16,7 +16,25 @@ MISC_TAG = 'misc'
 TAG_DELIM = '.'
 
 
-class FType(Enum):
+class DummyEnum(Enum):
+    """
+    Enum-like aliasing class 
+    where the enums are mostly interchangeable with their values
+    """
+
+    def __lt__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value < other.value
+        return NotImplemented
+
+    def __eq__(self, other):
+        return self.value.__eq__(other) or super().__eq__(other)
+
+    def __hash__(self):
+        return self.value.__hash__()
+
+
+class FType(DummyEnum):
     """
     Feature Type
     """
@@ -24,7 +42,7 @@ class FType(Enum):
     NUM = 'numerical'
 
 
-class FGroup(Enum):
+class FGroup(DummyEnum):
     """
     Feature Group
     """
@@ -32,10 +50,6 @@ class FGroup(Enum):
     ITEM = 'item'
     CONTEXT = 'context'
 
-    def __lt__(self, other):
-        if self.__class__ is other.__class__:
-            return self.value < other.value
-        return NotImplemented
 
 # Dictionary of FType to list of feature names optionally with dimension
 FtypeMeta = Dict[FType, Union[List[str], List[Tuple[str, int]]]]

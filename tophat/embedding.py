@@ -1,12 +1,14 @@
-import tensorflow as tf
+import itertools as it
+
 import numpy as np
 import pandas as pd
-import itertools as it
-from tensorflow.contrib.tensorboard.plugins import projector
-from tophat.metadata_proc import write_metadata_emb
-from tophat.constants import FGroup
-from typing import Iterable, Dict, Tuple, Optional, List, Any
+import tensorflow as tf
 from collections import defaultdict
+from tensorflow.contrib.tensorboard.plugins import projector
+from typing import Iterable, Dict, Tuple, Optional, List, Any
+
+from tophat.constants import FGroup
+from tophat.utils.metadata_proc import write_metadata_emb
 
 
 class EmbeddingMap(object):
