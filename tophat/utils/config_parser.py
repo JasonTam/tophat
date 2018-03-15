@@ -36,7 +36,11 @@ def recursive_dicter(obj, classkey=None, depth=0):
     if isinstance(obj, dict):
         data = {}
         for (k, v) in obj.items():
-            data[str(k)] = recursive_dicter(v, classkey, depth=depth + 1)
+            if isinstance(k, Enum):
+                key = k.name
+            else:
+                key = str(k)
+            data[key] = recursive_dicter(v, classkey, depth=depth + 1)
         return data
     elif isinstance(obj, Enum):
         return obj.name
