@@ -5,10 +5,11 @@ import sys
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import CategoricalDtype
 import scipy.sparse as sp
 import tensorflow as tf
 from collections import ChainMap
-from typing import Dict, Iterable, Sized, Sequence, Optional
+from typing import Iterable, Sized, Sequence, Optional
 
 from tophat.constants import *
 from tophat.data import TrainDataLoader
@@ -112,11 +113,20 @@ class PairSampler(object):
         use_ds_iter: If `True`, use tf.data.Dataset iterator API, else
             use generator of placeholder dictionaries for feed_dict API
         seed: Seed for random state
+        non_negs_df: Additional interactions that are safeguarded from being
+            sampled as negatives. But they will not be chosen as positives.
+
+    Terminology:
+        positive: the interactions to sample from
+        non-negatives: interactions that are safeguarded against being
+            sampled as negatives. But not necessarily sampled as positives.
+            _Usually_ though, they will be the same.
+
     """
     def __init__(self,
                  interactions_df: pd.DataFrame,
                  cols_d: Dict[FGroup, str],
-                 cats_d: Dict[FGroup, List],
+                 cats_d: Dict[str, List],
                  feat_codes_df_d: Dict[FGroup, pd.DataFrame],
                  feats_d_d: Dict[FGroup, Dict[FType, pd.DataFrame]],
                  input_pair_d: Dict[str, tf.Tensor],
@@ -129,6 +139,7 @@ class PairSampler(object):
                  sess: tf.Session=None,
                  use_ds_iter: bool=True,
                  seed: int=0,
+                 non_negs_df: Optional[pd.DataFrame]=None,
                  ):
 
         self.seed = seed
@@ -139,7 +150,7 @@ class PairSampler(object):
 
         # Index alignment
         feats_codes_dfs = {
-            fg: feat_codes_df_d[fg].loc[cats_d[cols_d[fg]]]
+            fg: feat_codes_df_d[fg].reindex(cats_d[cols_d[fg]])
             for fg in [FGroup.USER, FGroup.ITEM]
         }
 
@@ -147,11 +158,11 @@ class PairSampler(object):
         self.user_num_feats_arr = None
         self.item_num_feats_arr = None
         if feats_d_d and FType.NUM in feats_d_d[FGroup.USER]:
-            self.user_num_feats_arr = feats_d_d[FGroup.USER][FType.NUM].loc[cats_d[
-                    user_col]].values
+            self.user_num_feats_arr = feats_d_d[FGroup.USER][FType.NUM]\
+                .loc[cats_d[user_col]].values
         if feats_d_d and FType.NUM in feats_d_d[FGroup.ITEM]:
-            self.item_num_feats_arr = feats_d_d[FGroup.ITEM][FType.NUM].loc[cats_d[
-                    item_col]].values
+            self.item_num_feats_arr = feats_d_d[FGroup.ITEM][FType.NUM]\
+                .loc[cats_d[item_col]].values
         # TODO: NUM not supported for context right now
 
         self.method = method
@@ -179,47 +190,67 @@ class PairSampler(object):
         # Upfront processing
         self.n_users = len(interactions_df[user_col].cat.categories)
         self.n_items = len(interactions_df[item_col].cat.categories)
-        if 'ordinal' in self.method and 'activity' in interactions_df.columns:
-            df = calc_pseudo_ratings(
-                interactions_df=interactions_df,
-                user_col=user_col,
-                item_col=item_col,
-                counts_col='counts',
-                weight_switch_col='activity',
-                sublinear=True,
-                reagg_counts=False,
-                output_col='pseudo_rating',
-            )
 
-            self.xn_coo = sp.coo_matrix(
-                (df['pseudo_rating'],
-                 (df[user_col].cat.codes,
-                  df[item_col].cat.codes)),
-                shape=(self.n_users, self.n_items), dtype=np.float32)
+        self.pos_xn_coo = sp.coo_matrix(
+            (np.ones(len(interactions_df), dtype=bool),
+             (interactions_df[user_col].cat.codes,
+              interactions_df[item_col].cat.codes)),
+            shape=(self.n_users, self.n_items), dtype=bool)
+
+        if non_negs_df is not None:
+            # Additional non-negs passed in
+            # should match interaction cats
+            for col in [user_col, item_col]:
+                non_negs_df[col] = non_negs_df[col].astype(CategoricalDtype(
+                    categories=interactions_df[col].cat.categories))
+            non_negs_df.dropna(inplace=True)
+
+            non_negs_df = pd.concat([non_negs_df, interactions_df], axis=0)
         else:
-            self.xn_coo = sp.coo_matrix(
-                (np.ones(len(interactions_df), dtype=bool),
-                 (interactions_df[user_col].cat.codes,
-                  interactions_df[item_col].cat.codes)),
-                shape=(self.n_users, self.n_items), dtype=bool)
+            non_negs_df = interactions_df
 
+        # Methods that require non-neg verification
         if self.method in {'uniform_verified',
                            'uniform_ordinal',
                            'adaptive',
                            'adaptive_ordinal',
                            'adaptive_warp',
-                           } \
-                or self.uniform_users:
-            self.xn_csr = self.xn_coo.tocsr()
+                           }:
+
+            # Pseudo-ratings for non-neg
+            if ('ordinal' in self.method and
+               'activity' in interactions_df.columns):
+                non_negs_pr_df = calc_pseudo_ratings(
+                    interactions_df=non_negs_df,
+                    user_col=user_col,
+                    item_col=item_col,
+                    counts_col='counts',
+                    weight_switch_col='activity',
+                    sublinear=True,
+                    reagg_counts=False,
+                    output_col='pseudo_rating',
+                )
+
+                self.non_neg_xn_csr = sp.csr_matrix(
+                    (non_negs_pr_df['pseudo_rating'],
+                     (non_negs_pr_df[user_col].cat.codes,
+                      non_negs_pr_df[item_col].cat.codes)),
+                    shape=(self.n_users, self.n_items), dtype=np.float32)
+            else:
+                self.non_neg_xn_csr = sp.csr_matrix(
+                    (np.ones(len(non_negs_df), dtype=bool),
+                     (non_negs_df[user_col].cat.codes,
+                      non_negs_df[item_col].cat.codes)),
+                    shape=(self.n_users, self.n_items), dtype=bool)
         else:
-            self.xn_csr = None
+            self.non_neg_xn_csr = None
 
         if self.uniform_users:
             # index for each user
             self.shuffle_inds = np.arange(self.n_users)
         else:
             # index for each pos interaction
-            self.shuffle_inds = np.arange(len(self.xn_coo.data))
+            self.shuffle_inds = np.arange(len(self.pos_xn_coo.data))
 
         self.feats_codes_arrs = {
             fg: df.values if hasattr(df, 'values') else None
@@ -259,6 +290,7 @@ class PairSampler(object):
                          model=None,
                          use_ds_iter: bool=True,
                          seed: int=0,
+                         non_negs_df: Optional[pd.DataFrame] = None,
                          ):
         return cls(
             interactions_df=train_data_loader.interactions_df,
@@ -275,6 +307,7 @@ class PairSampler(object):
             model=model,
             use_ds_iter=use_ds_iter,
             seed=seed,
+            non_negs_df=non_negs_df,
         )
 
     def __iter__(self):
@@ -292,7 +325,7 @@ class PairSampler(object):
                                 **_):
         """See tophat.uniform.sample_uniform_verified"""
         return uniform.sample_uniform_verified(self.n_items,
-                                               self.xn_csr,
+                                               self.non_neg_xn_csr,
                                                user_inds_batch)
 
     def sample_uniform_ordinal(self,
@@ -301,7 +334,7 @@ class PairSampler(object):
                                **_):
         return uniform.sample_uniform_ordinal(
             self.n_items,
-            self.xn_csr,
+            self.non_neg_xn_csr,
             user_inds_batch,
             pos_item_inds_batch,
         )
@@ -333,7 +366,7 @@ class PairSampler(object):
                                         user_inds_batch,
                                         pos_item_inds_batch,
                                         use_first_violation,
-                                        self.xn_csr,
+                                        self.non_neg_xn_csr,
                                         )
 
     def sample_adaptive_warp(self,
@@ -349,7 +382,7 @@ class PairSampler(object):
                                         user_inds_batch,
                                         pos_item_inds_batch,
                                         use_first_violation,
-                                        self.xn_csr,
+                                        self.non_neg_xn_csr,
                                         return_n_samp,
                                         )
 
@@ -399,8 +432,8 @@ class PairSampler(object):
             # TODO: problem if less inds than batch_size
             inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)
             for inds_batch in inds_batcher:
-                user_inds_batch = self.xn_coo.row[inds_batch]
-                pos_item_inds_batch = self.xn_coo.col[inds_batch]
+                user_inds_batch = self.pos_xn_coo.row[inds_batch]
+                pos_item_inds_batch = self.pos_xn_coo.col[inds_batch]
                 if self.method == 'adaptive_warp':
                     neg_item_inds_batch, first_violator_inds = self.get_negs(
                         user_inds_batch=user_inds_batch,
@@ -431,6 +464,8 @@ class PairSampler(object):
         # The feed dict generator itself
         # Note: can implement __next__ as well
         #   if we want book-keeping state info to be kept
+
+        pos_xn_csr = self.pos_xn_coo.tocsr()
         for i in range(self.n_epochs):
             if self.shuffle:
                 np.random.shuffle(self.shuffle_inds)
@@ -442,7 +477,7 @@ class PairSampler(object):
                 pos_l = []
 
                 for user_ind in user_inds_batch:
-                    user_pos_item_inds = get_row_nz(self.xn_csr, user_ind)
+                    user_pos_item_inds = get_row_nz(pos_xn_csr, user_ind)
                     # `random.choice` slow
                     user_pos_item = user_pos_item_inds[np.random.randint(
                         len(user_pos_item_inds))]

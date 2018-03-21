@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.contrib.layers import l2_regularizer
-from typing import Dict, Callable
+from typing import Dict, Callable, Iterable, List
 from collections import ChainMap
 
 from tophat.constants import FGroup
@@ -15,16 +15,28 @@ class BilinearNet(object):
 
     Args:
         embedding_map: Variables and metadata concerning categorical embeddings
+        user_cat_cols: Name of user categorical feature columns
+        item_cat_cols: Name of item categorical feature columns
+        context_cat_cols: Name of context categorical feature columns
         interaction_type: Type of preset interaction
             One of {'intra', 'inter'}
     """
 
     def __init__(self,
                  embedding_map: EmbeddingMap,
+                 user_cat_cols: List[str],
+                 item_cat_cols: List[str],
+                 context_cat_cols: List[str],
                  interaction_type='inter',
                  ):
         self.embedding_map = embedding_map
+        self.cat_cols = {
+            FGroup.USER: user_cat_cols,
+            FGroup.ITEM: item_cat_cols,
+            FGroup.CONTEXT: context_cat_cols,
+        }
         self.interaction_type = interaction_type
+        self.num_meta = {}
 
     def forward(self, input_xn_d: Dict[str, tf.Tensor]) -> tf.Tensor:
         """Forward inference step to score a user-item interaction
@@ -39,11 +51,12 @@ class BilinearNet(object):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embs_by_group, biases = self.embedding_map.look_up(input_xn_d)
+        embs_by_group, biases = self.embedding_map.look_up(
+            input_xn_d, self.cat_cols)
         embs_all = ChainMap(*embs_by_group.values())
 
         fields_d = {
-            fg: self.embedding_map.cat_cols[fg]
+            fg: self.cat_cols[fg]
             for fg in [FGroup.USER, FGroup.ITEM, FGroup.CONTEXT]
         }
 
@@ -81,12 +94,20 @@ class BilinearNetWithNum(BilinearNet):
     """
     def __init__(self,
                  embedding_map: EmbeddingMap,
+                 user_cat_cols: List[str],
+                 item_cat_cols: List[str],
+                 context_cat_cols: List[str],
+                 interaction_type: str='inter',
                  num_meta: Dict[str, int]=None,
                  l2_vis: float=0.,
                  ruin: bool=True,
-                 interaction_type: str='inter',
+
                  ):
-        BilinearNet.__init__(self, embedding_map, interaction_type)
+        BilinearNet.__init__(self, embedding_map,
+                             user_cat_cols,
+                             item_cat_cols,
+                             context_cat_cols,
+                             interaction_type)
 
         self.ruin = ruin
         self.num_meta = num_meta or {}
@@ -146,7 +167,8 @@ class BilinearNetWithNum(BilinearNet):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embs_by_group, biases = self.embedding_map.look_up(input_xn_d)
+        embs_by_group, biases = self.embedding_map.look_up(
+            input_xn_d, self.cat_cols)
 
         if self.embedding_map.vis_emb_user_col:
             emb_user_vis = tf.nn.embedding_lookup(
@@ -188,9 +210,9 @@ class BilinearNetWithNum(BilinearNet):
 
         fields_d = {
             FGroup.USER:
-                self.embedding_map.cat_cols[FGroup.USER] + user_num_cols,
+                self.cat_cols[FGroup.USER] + user_num_cols,
             FGroup.ITEM:
-                self.embedding_map.cat_cols[FGroup.ITEM] + item_num_cols,
+                self.cat_cols[FGroup.ITEM] + item_num_cols,
         }
 
         interaction_sets = preset_interactions(
@@ -214,7 +236,8 @@ class BilinearNetWithNum(BilinearNet):
             if self.b_num_d:
                 contrib_vis_bias = tf.add_n(  # vbpr: beta * f
                     [tf.reduce_sum(
-                        tf.multiply(input_xn_d[feat_name], self.b_num_d[feat_name]),
+                        tf.multiply(input_xn_d[feat_name],
+                                    self.b_num_d[feat_name]),
                         1, keep_dims=False
                     ) for feat_name in self.num_meta.keys()],
                     name='contrib_vis_bias'
@@ -269,12 +292,19 @@ class BilinearNetWithNumFC(BilinearNet):
 
     def __init__(self,
                  embedding_map: EmbeddingMap,
+                 user_cat_cols: List[str],
+                 item_cat_cols: List[str],
+                 context_cat_cols: List[str],
+                 interaction_type: str='inter',
                  num_meta: Dict[str, int]=None,
-                 interaction_type='inter',
                  deep_net_fn: Callable=simple_fc,
                  deep_reg=None,
                  ):
-        BilinearNet.__init__(self, embedding_map, interaction_type)
+        BilinearNet.__init__(self, embedding_map,
+                             user_cat_cols,
+                             item_cat_cols,
+                             context_cat_cols,
+                             interaction_type)
 
         self.num_meta = num_meta or {}
         self.deep_net_fn = deep_net_fn
@@ -293,7 +323,8 @@ class BilinearNetWithNumFC(BilinearNet):
         """
 
         # Handle sparse (embedding lookup of categorical features)
-        embs_by_group, biases = self.embedding_map.look_up(input_xn_d)
+        embs_by_group, biases = self.embedding_map.look_up(
+            input_xn_d, self.cat_cols)
 
         num_emb_d = {
             feat_name: input_xn_d[feat_name]
@@ -303,7 +334,7 @@ class BilinearNetWithNumFC(BilinearNet):
         embs_all = ChainMap(*embs_by_group.values(), num_emb_d)
 
         fields_d = {
-            fg: self.embedding_map.cat_cols[fg]
+            fg: self.cat_cols[fg]
             for fg in [FGroup.USER, FGroup.ITEM, FGroup.CONTEXT]
         }
 

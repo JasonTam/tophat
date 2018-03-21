@@ -1,7 +1,7 @@
 """
 Some constant values
 """
-from typing import Dict, Union, List, Tuple
+from typing import *
 from enum import Enum
 
 # For reproducibility

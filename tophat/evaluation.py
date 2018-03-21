@@ -558,8 +558,9 @@ class Validator(object):
             
             self.zero_init_rows = None
 
-        self.user_ids_val = self.interactions_df[self.user_col_val].unique()\
-            .categories.values
+        self.user_ids_val = np.array(list(set(
+            self.interactions_df[self.user_col_val]
+        ).intersection(set(self.user_cat_codes_df.index))))
 
         self.item_ids = self.cats_d[self.item_col_val].copy()
         if limit_items >= 0:

@@ -14,9 +14,6 @@ from tophat.utils.metadata_proc import write_metadata_emb
 class EmbeddingMap(object):
     def __init__(self,
                  cats_d: Dict[str, List[Any]],
-                 user_cat_cols: Iterable[str],
-                 item_cat_cols: Iterable[str],
-                 context_cat_cols: Iterable[str],
                  embedding_dim: int=16,
                  l1_bias: float=0.,
                  l2_bias: float=0.,
@@ -32,9 +29,6 @@ class EmbeddingMap(object):
         
         Args:
             cats_d: Dictionary of categories
-            user_cat_cols: Name of user categorical feature columns
-            item_cat_cols: Name of item categorical feature columns
-            context_cat_cols: Name of context categorical feature columns
             embedding_dim: Size of embedding dimension
                 (number of latent factors)
             l1_bias: l1 regularization scale for bias
@@ -70,11 +64,6 @@ class EmbeddingMap(object):
 
         self.seed = seed
         self.cats_d = cats_d
-        self.cat_cols = {
-            FGroup.USER: user_cat_cols,
-            FGroup.ITEM: item_cat_cols,
-            FGroup.CONTEXT: context_cat_cols,
-        }
 
         # Regularization
         self.l1_bias = l1_bias
@@ -152,7 +141,7 @@ class EmbeddingMap(object):
                     regularizer=self.reg_emb,
                 )
 
-    def look_up(self, input_xn_d
+    def look_up(self, input_xn_d, cat_cols: Dict[FGroup, List[str]],
                 ) -> Tuple[Dict[FGroup, Dict[str, tf.Tensor]],  # embs
                            Dict[str, tf.Tensor],  # biases (no hierarchy)
                            ]:
@@ -169,7 +158,7 @@ class EmbeddingMap(object):
 
         emb_lookup_d = {}
 
-        for fg, cols in self.cat_cols.items():
+        for fg, cols in cat_cols.items():
             emb_lookup_d[fg] = lookup_wrapper(
                 self.embeddings_d, input_xn_d, cols,
                 f'{fg.value}_lookup', name_tmp='{}_emb',
@@ -177,7 +166,7 @@ class EmbeddingMap(object):
             )
 
         biases = lookup_wrapper(
-            self.biases_d, input_xn_d, it.chain(*self.cat_cols.values()),
+            self.biases_d, input_xn_d, it.chain(*cat_cols.values()),
             'bias_lookup', name_tmp='{}_bias',
             feature_weights_d=self.feature_weights_d,
         )

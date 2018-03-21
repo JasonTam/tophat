@@ -53,7 +53,7 @@ def movielens_cfg():
     fit_params = {
         'emb_dim': 30,
         'batch_size': 128,
-        'n_steps': 5000+1,
+        'n_steps': 10000+1,
         'log_every': 500,
         'eval_every': 1000,
         'save_every': 99999,

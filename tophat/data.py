@@ -138,9 +138,10 @@ class InteractionsSource(object):
                  activity_filter_set: Optional[set]=None,
                  assign_dates: bool=True,
                  days_lookback: int=9999,
-                 date_lookforward: Optional[str]=None
+                 date_lookforward: Optional[str]=None,
+                 name: Optional[str]=None,
                  ):
-
+        self.name = name or ''
         self.path = path
         self.user_col = user_col
         self.item_col = item_col
@@ -208,17 +209,24 @@ class TrainDataLoader(object):
 
     def __init__(self,
                  interactions_train: InteractionsSource,
-                 group_features: Dict[FGroup, Optional[Iterable[FeatureSource]]],
+                 group_features:
+                 Dict[FGroup, Optional[Iterable[FeatureSource]]]=None,
                  specific_feature: Dict[FGroup, bool]=None,
                  context_cols: Optional[Iterable[str]]=None,
                  batch_size: int=128,
+                 existing_cats_d: Optional[Dict[str, List[Any]]]=None,
+                 name: Optional[str]=None,
                  ):
-
+        self.name = name or interactions_train.name or ''
         self.batch_size = batch_size
         self.activity_col = interactions_train.activity_col
         self.cols = {
             FGroup.USER: interactions_train.user_col,
             FGroup.ITEM: interactions_train.item_col,
+        }
+        group_features = group_features or {
+            FGroup.USER: [],
+            FGroup.ITEM: [],
         }
 
         self.feats_codes_df: Dict[FGroup, pd.DataFrame] = {}
@@ -228,36 +236,40 @@ class TrainDataLoader(object):
         if specific_feature is None:
             specific_feature = defaultdict(lambda: True)
 
+        self.cat_cols = {}
+        self.cats_d = existing_cats_d or {}
+
         self.interactions_df, self.feats_by_group = \
             load_simple(
                 interactions_train,
                 group_features,
                 specific_feature,
+                existing_cats_d=self.cats_d,
             )
 
-        self.cat_cols = {}
-        self.cats_d = {}
         for fgroup in [FGroup.USER, FGroup.ITEM]:
             col = self.cols[fgroup]
             feats = self.feats_by_group[fgroup]
             self.cat_cols[fgroup] = feats[FType.CAT].columns.tolist()
 
-            self.cats_d.update({
-                feat_name: feats[FType.CAT][feat_name].cat.categories.tolist()
-                for feat_name in self.cat_cols[fgroup]
-            })
+            if not existing_cats_d:
+                self.cats_d.update({
+                    feat_name: feats[FType.CAT][feat_name].cat.categories.tolist()
+                    for feat_name in self.cat_cols[fgroup]
+                })
 
-            # If the user or item ids are not present in feature tables
-            if col not in self.cats_d:
-                self.cats_d[col] = self.interactions_df[col]\
-                    .cat.categories.tolist()
+                # If the user or item ids are not present in feature tables
+                if col not in self.cats_d:
+                    self.cats_d[col] = self.interactions_df[col]\
+                        .cat.categories.tolist()
 
         self.context_cat_cols = context_cols or []
         if self.context_cat_cols:
             append_dt_extracts(self.interactions_df, self.context_cat_cols)
-            for col in self.context_cat_cols:
-                self.cats_d[col] = self.interactions_df[col]\
-                    .cat.categories.tolist()
+            if not existing_cats_d:
+                for col in self.context_cat_cols:
+                    self.cats_d[col] = self.interactions_df[col]\
+                        .cat.categories.tolist()
 
         self.make_feat_codes()
         self.process_num()
