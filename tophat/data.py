@@ -6,7 +6,7 @@ from collections import defaultdict
 from lib_cerebro_py import custom_io
 from lib_cerebro_py.log import logger, log_shape_or_npartitions
 from typing import Optional, Iterable, Tuple, Dict, List, Any, Sized, \
-    Sequence, Union
+    Sequence, Union, Callable
 
 from tophat.constants import FType, FGroup
 from tophat.utils.pp_utils import append_dt_extracts
@@ -122,6 +122,7 @@ class InteractionsSource(object):
         path: Path of the data
         user_col: Name of the user column
         item_col: Name of the item column
+        count_col: Name of the count column
         activity_col: Name of the interaction type
         activity_filter_set: Subset of interaction types to consider
         assign_dates: If True, and loading from date-partitioned
@@ -134,6 +135,7 @@ class InteractionsSource(object):
                  path: str,
                  user_col: str,
                  item_col: str,
+                 count_col: Optional[str]=None,
                  activity_col: Optional[str]=None,
                  activity_filter_set: Optional[set]=None,
                  assign_dates: bool=True,
@@ -145,6 +147,7 @@ class InteractionsSource(object):
         self.path = path
         self.user_col = user_col
         self.item_col = item_col
+        self.count_col = count_col
         self.activity_col = activity_col
         self.activity_filter_set = activity_filter_set
         self.assign_dates = assign_dates
@@ -192,6 +195,56 @@ class InteractionsSource(object):
             if hasattr(interactions_df, 'compute'):
                 interactions_df = interactions_df.compute()
             self.data = interactions_df
+        return self
+
+
+class InteractionsDerived(object):
+    """Container for interaction-related data derived from another
+    interaction dataset
+
+    Args:
+        xn_parent: the parent interaction source to derive data from
+        fn: the function to apply to the parent data
+        user_col: optional user column name (if different from parent)
+        item_col: optional item column name (if different from parent)
+        activity_col: optional activity column name (if different from parent)
+        memoize: if True, memoize the derived data, else, apply the function
+            on every property call
+
+    Todo:
+        Wish we could subclass from `InteractionsSource`, but overriding
+        and attribute with a property is messed up
+
+    """
+
+    def __init__(self,
+                 xn_parent: InteractionsSource,
+                 fn: Callable[[InteractionsSource], pd.DataFrame],
+                 user_col: Optional[str]=None,
+                 item_col: Optional[str]=None,
+                 activity_col: Optional[str]=None,
+                 memoize: bool=True,
+                 name: Optional[str] = None,
+                 ):
+
+        self.xn_parent = xn_parent
+        self.fn = fn
+        self.memoize = memoize
+        self.memo = None
+
+        self.name = name or f'{xn_parent.name}_child'
+        self.user_col = user_col or xn_parent.user_col
+        self.item_col = item_col or xn_parent.item_col
+        self.activity_col = activity_col or xn_parent.activity_col
+
+    @property
+    def data(self):
+        if self.memo is None or not self.memoize:
+            self.memo = self.fn(self.xn_parent)
+        return self.memo
+
+    def load(self):
+        self.xn_parent.load()
         return self
 
 
