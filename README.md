@@ -1,41 +1,32 @@
 # Tophat
  
-## Running Local
-*Only* local runs are supported right now.
+ Tophat is a factorization-based recommendation engine built using 
+ [TensforFlow](https://www.tensorflow.org/).  
+ 
+ 
+## Running GILT Models
 
-Grab 10 days of interaction data and some related dimensional data:
+### Getting Fixture Data
+The download scripts `bin/get_fixture_*.sh` can be used to sync some GILT 
+fixture data for local testing.
 
+### Fitting a Model
 ```
-./get_fixture_small.sh
+python jobs/fit_job.py [env]
 ```
+env can be {`local`, `integ`, `dev`, `prod`}
 
-Build and enter Docker container. Run fit job:
+
+### Scheduling on Sundial
+
+Production jobs can be scheduled to run using [Sundial](sundial)
 
 
-```
-make cpu
-python tophat/fit_job.py
-```
-
-or
-
-```
-make gpu
-python3.6 tophat/fit_job.py
-```
-
-Note: [nvidia-docker](github.com/NVIDIA/nvidia-docker) should be installed for 
-GPU docker images
+## Tensorboard
 
 Tensorboard can be run for inspection (does not need to be within
 docker container as the log dir is shared by a Docker volume).
 
 ```
 tensorboard --logdir=/tmp/tensorboard-logs
-```
-
-
-## Integration Test
-```
-make gpu-integration
 ```
