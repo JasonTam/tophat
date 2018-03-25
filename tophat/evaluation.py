@@ -5,15 +5,15 @@ import pandas as pd
 import tensorflow as tf
 from collections import defaultdict
 from lib_cerebro_py.log import logger
-from tensorflow.contrib.metrics import streaming_mean, streaming_auc, \
+from tensorflow.contrib.metrics import streaming_mean, \
     streaming_sparse_average_precision_at_k
 from tqdm import tqdm
 from typing import Dict, Any, Generator, Tuple, Sequence, Optional, Union
 
 from tophat.constants import FType
-from tophat.core import fwd_dict_via_ftypemeta
 from tophat.data import load_simple_warm_cats, load_simple, TrainDataLoader
 from tophat.utils.pp_utils import append_dt_extracts
+from tophat.core import FactModel
 
 
 def items_pred_dicter(user_id: Any, item_ids: Sequence[Any],
@@ -420,6 +420,7 @@ class Validator(object):
     Args:
         config: 
         train_data_loader: Training data object
+        model_ref: reference (training) model used to determine input structure
         limit_items: Limits the number of items in catalog to predict over
             -1 for all items (from train and val)
             0 for only val items
@@ -434,10 +435,12 @@ class Validator(object):
     """
 
     def __init__(self, config, train_data_loader: TrainDataLoader,
+                 model_ref: FactModel,
                  limit_items=-1, n_users_eval=200,
                  include_cold=True, cold_only=False, n_xns_as_cold=5,
                  seed: int=0):
 
+        self.model_ref = model_ref
         self.seed = seed
         np.random.seed(self.seed)
 
@@ -579,12 +582,10 @@ class Validator(object):
         logger.info(f'Evaluating on {len(self.item_ids)} items')
 
         np.random.shuffle(self.user_ids_val)
-        structs = {FType.CAT: list(self.cats_d.keys()),
-                   FType.NUM: list(self.num_meta.items()),
-                   }
+
         with tf.name_scope('placeholders'):
-            self.input_fwd_d = fwd_dict_via_ftypemeta(
-                structs, batch_size=len(self.item_ids))
+            self.input_fwd_d = self.model_ref.get_fwd_dict(
+                batch_size=len(self.item_ids))
 
     def make_ops(self, model):
         # Eval ops

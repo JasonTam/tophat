@@ -1,5 +1,5 @@
+import itertools as it
 from typing import Dict, Optional
-
 from tophat import losses
 from tophat.nets.bilinear import *
 from tophat.utils.ph_conversions import *
@@ -63,7 +63,7 @@ class FactModel(object):
         """
 
         return fwd_dict_via_cats(
-            self.net.embedding_map.cats_d.keys(),
+            it.chain(*self.net.cat_cols.values()),
             batch_size)
 
     def get_pair_dict(self, batch_size: int=None):
