@@ -150,7 +150,8 @@ class PairSampler(object):
 
         # Index alignment
         feats_codes_dfs = {
-            fg: feat_codes_df_d[fg].reindex(cats_d[cols_d[fg]])
+            # TODO: fishy... this breaks sometimes if chagned to `reindex`
+            fg: feat_codes_df_d[fg].loc[cats_d[cols_d[fg]]]
             for fg in [FGroup.USER, FGroup.ITEM]
         }
 
