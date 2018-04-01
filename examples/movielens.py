@@ -20,35 +20,32 @@ def movielens_cfg():
 
     # Converting to tophat data containers
     xn_train = InteractionsSource(
-        path='via_lightfm.datasets.movielens',
+        path=pd.DataFrame(np.vstack(data['train'].nonzero()).T,
+                          columns=['user_id', 'item_id']),
         user_col='user_id',
         item_col='item_id',
     )
-    xn_train.data = pd.DataFrame(np.vstack(data['train'].nonzero()).T,
-                                 columns=['user_id', 'item_id'])
 
     xn_test = InteractionsSource(
-        path='via_lightfm.datasets.movielens',
+        path=pd.DataFrame(np.vstack(data['test'].nonzero()).T,
+                          columns=['user_id', 'item_id']),
         user_col='user_id',
         item_col='item_id',
     )
-    xn_test.data = pd.DataFrame(np.vstack(data['test'].nonzero()).T,
-                                columns=['user_id', 'item_id'])
 
-    genre_feats = FeatureSource(
-        name='genre',
-        path='via_lightfm.datasets.movielens',
-        feature_type=FType.CAT,
-        index_col='item_id',
-    )
-    genre_feats.data = pd.DataFrame(np.vstack(data['item_features'].nonzero()).T,
-                                    columns=['item_id', 'genre_id'])
-    genre_feats.data.set_index('item_id', inplace=True)
+    genre_df = pd.DataFrame(np.vstack(data['item_features'].nonzero()).T,
+                            columns=['item_id', 'genre_id'])
 
     # Multiple features within the same group not yet supported in tophat
     # keeping only the first genre for each movie :(
-    genre_feats.data = genre_feats.data\
-        .loc[~genre_feats.data.index.duplicated(keep='first')]
+    genre_df.drop_duplicates('item_id', keep='first', inplace=True)
+
+    genre_feats = FeatureSource(
+        path=genre_df,
+        feature_type=FType.CAT,
+        index_col='item_id',
+        name='genre',
+    )
 
     fit_params = {
         'emb_dim': 30,

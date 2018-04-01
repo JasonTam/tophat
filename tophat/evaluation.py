@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from collections import defaultdict
-from lib_cerebro_py.log import logger
 from tensorflow.contrib.metrics import streaming_mean, \
     streaming_sparse_average_precision_at_k
 from tqdm import tqdm
@@ -13,6 +12,7 @@ from typing import Dict, Any, Generator, Tuple, Sequence, Optional, Union
 from tophat.constants import FType
 from tophat.data import load_simple_warm_cats, load_simple, TrainDataLoader
 from tophat.utils.pp_utils import append_dt_extracts
+from tophat.utils.log import logger
 from tophat.core import FactModel
 
 

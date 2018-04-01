@@ -1,15 +1,14 @@
-import os
 import pandas as pd
 from pandas.api.types import CategoricalDtype
 import itertools as it
 from collections import defaultdict
-from lib_cerebro_py import custom_io
-from lib_cerebro_py.log import logger, log_shape_or_npartitions
 from typing import Optional, Iterable, Tuple, Dict, List, Any, Sized, \
     Sequence, Union, Callable
 
 from tophat.constants import FType, FGroup
 from tophat.utils.pp_utils import append_dt_extracts
+from tophat.utils.convenience import filter_col_isin, log_shape_or_npartitions
+from tophat.utils.log import logger
 
 
 class FeatureSource(object):
@@ -20,21 +19,28 @@ class FeatureSource(object):
         feature_type: Type of feature (ex. categorical, numerical)
         index_col: Name of the column to set as the index
         use_cols: Subset of columns to consider
+        load_fn: function to load features from path
+        load_kwargs: kwargs for `load_fn`
         name: Name of the data source
     """
 
     def __init__(self,
-                 path: str,
+                 path: Union[str, pd.DataFrame],
                  feature_type: FType,
                  index_col: Optional[str]=None,
                  use_cols: Optional[List[str]]=None,
                  concat_cols: Optional[List[Sequence[str]]]=None,
                  drop: Optional[Union[Iterable[str], bool]]=True,
+                 load_fn: Optional[Callable[
+                     [Union[str, pd.DataFrame]], pd.DataFrame]] = None,
+                 load_kwargs: Optional[Dict] = None,
                  name=None,
                  ):
 
         self.name = name
         self.path = path
+        self.load_fn = load_fn or (lambda x: x)
+        self.load_kwargs: Dict = load_kwargs or {}
         self.feature_type = feature_type
         self.index_col = index_col
         self.use_cols = use_cols
@@ -47,10 +53,11 @@ class FeatureSource(object):
         return f'FeatureSource({self.name})'
 
     def __repr__(self):
+        src_name = self.path if isinstance(self.path, str) else 'pre-loaded'
         return '<%s.%s (%s) at %s>' % (
             self.__class__.__module__,
             self.__class__.__name__,
-            self.path,
+            src_name,
             hex(id(self))
         )
 
@@ -58,8 +65,7 @@ class FeatureSource(object):
         if not (force_reload or self.data is None):
             logger.info('Already loaded')
         else:
-            feat_df = custom_io \
-                .try_load(self.path, limit_dates=False)
+            feat_df = self.load_fn(self.path, **self.load_kwargs)
             if hasattr(feat_df, 'compute'):  # cant `.isin` dask
                 feat_df = feat_df.compute()
             if self.index_col:
@@ -119,40 +125,38 @@ class InteractionsSource(object):
     """Container for a source of interaction-related data
 
     Args:
-        path: Path of the data
+        path: Path of the data or a pre-loaded dataframe
         user_col: Name of the user column
         item_col: Name of the item column
         count_col: Name of the count column
         activity_col: Name of the interaction type
         activity_filter_set: Subset of interaction types to consider
-        assign_dates: If True, and loading from date-partitioned
-            directories, assign the date information to a column
-        days_lookback: Max number of days to look back from today
-        date_lookforward: Furthest (most recent) date to consider
+        load_fn: function to load interactions from path
+        load_kwargs: kwargs for `load_fn`
+        name: name for this object
     """
 
     def __init__(self,
-                 path: str,
+                 path: Union[str, pd.DataFrame],
                  user_col: str,
                  item_col: str,
-                 count_col: Optional[str]=None,
-                 activity_col: Optional[str]=None,
-                 activity_filter_set: Optional[set]=None,
-                 assign_dates: bool=True,
-                 days_lookback: int=9999,
-                 date_lookforward: Optional[str]=None,
-                 name: Optional[str]=None,
+                 count_col: Optional[str] = None,
+                 activity_col: Optional[str] = None,
+                 activity_filter_set: Optional[set] = None,
+                 load_fn: Optional[Callable[
+                     [Union[str, pd.DataFrame]], pd.DataFrame]] = None,
+                 load_kwargs: Optional[Dict] = None,
+                 name: Optional[str] = None,
                  ):
         self.name = name or ''
         self.path = path
+        self.load_fn = load_fn or (lambda x: x)
+        self.load_kwargs: Dict = load_kwargs or {}
         self.user_col = user_col
         self.item_col = item_col
         self.count_col = count_col
         self.activity_col = activity_col
         self.activity_filter_set = activity_filter_set
-        self.assign_dates = assign_dates
-        self.days_lookback = days_lookback
-        self.date_lookforward = date_lookforward
 
         self.data = None
 
@@ -160,10 +164,11 @@ class InteractionsSource(object):
         return f'InteractionsSource({self.path})'
 
     def __repr__(self):
+        src_name = self.path if isinstance(self.path, str) else 'pre-loaded'
         return '<%s.%s (%s) at %s>' % (
             self.__class__.__module__,
             self.__class__.__name__,
-            self.path,
+            src_name,
             hex(id(self))
         )
 
@@ -171,25 +176,13 @@ class InteractionsSource(object):
         if self.data is not None:
             logger.info('Already loaded')
         else:
-            if os.path.splitext(self.path)[-1]:
-                # single file -- can't selectively read partitions by date
-                interactions_df = custom_io.try_load(
-                    self.path,
-                    limit_dates=False)
-            else:
-                interactions_df = custom_io.try_load(
-                    self.path,
-                    limit_dates=True,
-                    days_lookback=self.days_lookback,
-                    date_lookforward=self.date_lookforward,
-                    assign_dates=self.assign_dates,
-                )
+            interactions_df = self.load_fn(self.path, **self.load_kwargs)
             if 'value' in interactions_df.columns \
                     and self.item_col not in interactions_df.columns:
                 interactions_df = interactions_df.rename(
                     columns={'value': self.item_col})
             if self.activity_col and self.activity_filter_set:
-                interactions_df = custom_io.filter_col_isin(
+                interactions_df = filter_col_isin(
                     interactions_df,
                     self.activity_col, self.activity_filter_set)
             if hasattr(interactions_df, 'compute'):

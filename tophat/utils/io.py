@@ -1,6 +1,3 @@
-import os
-import pandas as pd
-import pickle
 from lib_cerebro_py.custom_io import *
 from typing import Dict
 
@@ -44,3 +41,42 @@ def load_factors(dir_factors: str) -> Dict[str, pd.DataFrame]:
     }
 
     return factors_d
+
+
+def cerebro_xn_load(path,
+                    date_lookforward=None,
+                    days_lookback=365,
+                    assign_dates=False,
+                    ):
+    """
+
+    Args:
+        path: path for data
+        assign_dates: If True, and loading from date-partitioned
+                directories, assign the date information to a column
+        days_lookback: Max number of days to look back from today
+        date_lookforward: Furthest (most recent) date to consider
+
+    Returns: dataframe of interactions
+
+    """
+    if os.path.splitext(path)[-1]:
+        # single file -- can't selectively read partitions by date
+        interactions_df = try_load(
+            path,
+            limit_dates=False)
+    else:
+        interactions_df = try_load(
+            path,
+            limit_dates=True,
+            days_lookback=days_lookback,
+            date_lookforward=date_lookforward,
+            assign_dates=assign_dates,
+        )
+
+    return interactions_df
+
+
+def cerebro_feature_load(path):
+    feat_df = try_load(path, limit_dates=False)
+    return feat_df

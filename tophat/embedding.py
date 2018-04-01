@@ -9,6 +9,7 @@ from typing import Iterable, Dict, Tuple, Optional, List, Any
 
 from tophat.constants import FGroup
 from tophat.utils.metadata_proc import write_metadata_emb
+from tophat.utils.log import logger
 
 
 class EmbeddingMap(object):
@@ -220,7 +221,7 @@ def read_avro(path_or_buf) -> pd.DataFrame:
     try:
         buf.close()
     except AttributeError:
-        print('Stream has no attribute close')
+        logger.info('Stream has no attribute close')
 
     return df
 
