@@ -1,5 +1,3 @@
-# Note: duped in lightfm-shenanigans repo
-
 factors_avro = {
     'namespace': 'com.gilt.cerebro.job',
     'type': 'record',

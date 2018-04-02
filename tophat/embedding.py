@@ -41,14 +41,14 @@ class EmbeddingMap(object):
             l2_emb: l2 regularization scale for embeddings
                 (0 to disable)
             seed: Seed for random state
-            zero_init_rows: If provided, we will zero out these particular records
-                This is used to simulate cold start items
-                Zero them out right away
-                    and they should remain zero due to regularization
-                    except when the particular entry is chosen as the 
-                    sample negative :(
-                    (this is only done on embs since biases are initialized 
-                    with 0 anyway)
+            zero_init_rows: If provided, these rows will be zero initialized. 
+                This is used to simulate cold start items. 
+                Zero them out right away 
+                and they should remain zero due to regularization 
+                except when the particular entry is chosen as the 
+                sample negative :( 
+                (this is only done on embs since biases are initialized 
+                with 0 anyway)
             feature_weights_d: Feature weights by name
             vis_emb_user_col: If provided, give users an additional
                 visual-specific embedding (the value of the argument will 
@@ -61,6 +61,7 @@ class EmbeddingMap(object):
                 (Warning: this does not load in any saved gradients or whatever
                 weights are used by the optimizer -- so it's only halfway to
                 actually resuming a model)
+                
         """
 
         self.seed = seed
@@ -152,6 +153,7 @@ class EmbeddingMap(object):
         Args:
             input_xn_d: Dictionary of feature names to category codes
                 for a single interaction
+            cat_cols: categorical feature columns keyed by feature group
                 
         Returns:
             Tuple of embeddings and biases
@@ -263,19 +265,23 @@ class EmbeddingProjector(object):
     Args:
         embedding_map: Embedding map object
         summary_writer: Summary writer object
-        config: Config params
+        path_names_d: Dictionary of human-readable labels
+        log_dir: Directory to write metadata to 
+            (should be the same as the log directory of checkpoints etc)
     """
 
     def __init__(self,
                  embedding_map: EmbeddingMap,
                  summary_writer: tf.summary.FileWriter,
-                 config):
+                 path_names_d: Dict[str, str],
+                 log_dir: str,
+                 ):
 
         self.summary_writer = summary_writer
         feat_to_metapath = write_metadata_emb(
             embedding_map.cats_d,
-            config.get('names'),
-            config.get('log_dir'))
+            path_names_d,
+            log_dir)
 
         self.projection_config = projector.ProjectorConfig()
         emb_proj_d = {}
@@ -283,7 +289,8 @@ class EmbeddingProjector(object):
             if feat_name in feat_to_metapath:
                 emb_proj_d[feat_name] = self.projection_config.embeddings.add()
                 emb_proj_d[feat_name].tensor_name = emb.name
-                emb_proj_d[feat_name].metadata_path = feat_to_metapath[feat_name]
+                emb_proj_d[feat_name].metadata_path = feat_to_metapath[
+                    feat_name]
 
     def viz(self):
         # After the last step, lets save some embedding to viz later

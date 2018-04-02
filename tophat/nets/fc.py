@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.contrib.layers import fully_connected, dropout, batch_norm
-from tensorflow.contrib.layers.python.layers import initializers
 
 
 def simple_fc(x: tf.Tensor, reg=None, scope_name='fc'):
