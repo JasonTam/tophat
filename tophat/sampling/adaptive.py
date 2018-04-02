@@ -1,10 +1,10 @@
 import numpy as np
 import scipy.sparse as sp
-from typing import Sequence, Union, Dict, Callable
-from tophat.utils.sparse_utils import get_row_nz, get_row_nz_data
+from typing import Sequence, Callable
+from tophat.utils.sparse_utils import get_row_nz_data
 
 
-def neg_samp(pos_inds: np.array, n_items: int, n_samp: int=32):
+def neg_samp(pos_inds: np.array, n_items: int, n_samp: int = 32):
     """Samples negatives given an ordered array of positive indices to exclude
     from sampling
     
@@ -31,17 +31,17 @@ def sample_adaptive(
         score_fn: Callable,
         user_inds_batch: Sequence[int],
         pos_item_inds_batch: Sequence[int],
-        use_first_violation: bool=False,
-        xn_csr: sp.csr_matrix=None,
-        return_n_samp: bool=False,
+        use_first_violation: bool = False,
+        xn_csr: sp.csr_matrix = None,
+        return_n_samp: bool = False,
 ):
     """Uses the forward prediction of `self.model` to adaptively sample
     the first, or most violating negative candidate
     
-    Note: for true WARP [4]_ sampling with k-OS loss, we need to also return
+    Note: for true WARP [1]_ sampling with k-OS loss, we need to also return
     the number of samples it took to reach the first violation
     to pass into our loss function. 
-        (set `use_first_violation=True` and `return_n_samp=True` ) 
+    (set `use_first_violation=True` and `return_n_samp=True` )
 
     Args:
         n_items: number of items in catalog to sample from
@@ -73,9 +73,9 @@ def sample_adaptive(
         Array with shape [batch_size] of random items as negatives
 
     References:
-        .. [4] Weston, Jason, Samy Bengio, and Nicolas Usunier. "Wsabie:
-           Scaling up to large vocabulary image annotation." IJCAI.
-           Vol. 11. 2011.        
+        .. [1] Weston, Jason, Hector Yee, and Ron J. Weiss. "Learning to rank
+           recommendations with the k-order statistic loss." Proceedings of the
+           7th ACM conference on Recommender systems. ACM, 2013.
 
     """
 

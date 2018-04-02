@@ -1,5 +1,4 @@
 import itertools as it
-from typing import Dict, Optional
 from tophat import losses
 from tophat.nets.bilinear import *
 from tophat.utils.ph_conversions import *
@@ -24,10 +23,10 @@ class FactModel(object):
                  loss_fn: losses.PairLossFn = losses.softplus_loss,
                  optimizer: tf.train.Optimizer = tf.train.AdamOptimizer(
                      learning_rate=0.001),
-                 input_pair_d: Optional[Dict[str, tf.Tensor]]=None,
+                 input_pair_d: Optional[Dict[str, tf.Tensor]] = None,
                  seed=SEED,
-                 item_col: Optional[str]=None,
-                 name: Optional[str]=None,
+                 item_col: Optional[str] = None,
+                 name: Optional[str] = None,
                  ):
 
         self.seed = seed
@@ -50,7 +49,7 @@ class FactModel(object):
 
         self.name = name or ''
 
-    def get_fwd_dict(self, batch_size: int=None):
+    def get_fwd_dict(self, batch_size: int = None):
         """Gets the placeholders required for the forward prediction of a
         single interaction
 
@@ -66,7 +65,7 @@ class FactModel(object):
             it.chain(*self.net.cat_cols.values()),
             batch_size)
 
-    def get_pair_dict(self, batch_size: int=None):
+    def get_pair_dict(self, batch_size: int = None):
         """Gets the placeholders required for the forward prediction of a
         pair of interactions
 
@@ -138,11 +137,12 @@ class FactModel(object):
                                     first_violation, self.n_items,
                                     )
 
-    def training(self, loss, primary=True) -> tf.Operation:
+    def training(self, loss, primary: bool = True) -> tf.Operation:
         """Makes the training operation and attaches some summary values
 
         Args:
             loss: Loss operation
+            primary: flag to denote primary model (as opposed to auxiliary)
 
         Returns:
             Training operation

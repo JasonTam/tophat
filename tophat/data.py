@@ -97,7 +97,7 @@ def combine_cols(df: pd.DataFrame,
         df: dataframe to operate on
         cols_seq: list-like of list-like columns to concat together
         sep: string separator
-            Note: careful - tensorflow needs [A-Za-z0-9_.\\-/]* for scope
+            Note: careful - tensorflow needs `[A-Za-z0-9_.\\-/]*` for scope
         drop: if True, drop the columns after concatenating
             if a sequence of columns is provided, those columns will be dropped
 

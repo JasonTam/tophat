@@ -15,16 +15,16 @@ from tophat.utils.log import logger
 class EmbeddingMap(object):
     def __init__(self,
                  cats_d: Dict[str, List[Any]],
-                 embedding_dim: int=16,
-                 l1_bias: float=0.,
-                 l2_bias: float=0.,
-                 l1_emb: float=0.,
-                 l2_emb: float=0.,
+                 embedding_dim: int = 16,
+                 l1_bias: float = 0.,
+                 l2_bias: float = 0.,
+                 l1_emb: float = 0.,
+                 l2_emb: float = 0.,
                  seed=322,
-                 zero_init_rows: Optional[Dict[str, Iterable[int]]]=None,
-                 feature_weights_d: Optional[Dict[str, float]]=None,
-                 vis_emb_user_col: Optional[str]=None,
-                 init_emb_d: Optional[Dict[str, tf.Tensor]]=None,
+                 zero_init_rows: Optional[Dict[str, Iterable[int]]] = None,
+                 feature_weights_d: Optional[Dict[str, float]] = None,
+                 vis_emb_user_col: Optional[str] = None,
+                 init_emb_d: Optional[Dict[str, tf.Tensor]] = None,
                  ):
         """Convenience container for embedding layers
         
@@ -178,8 +178,8 @@ class EmbeddingMap(object):
 def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
                    input_xn_d: Dict[str, tf.Tensor],
                    cols: Iterable[str],
-                   scope: str, name_tmp: str='{}',
-                   feature_weights_d: Dict[str, float]=None,
+                   scope: str, name_tmp: str = '{}',
+                   feature_weights_d: Dict[str, float] = None,
                    ) -> Dict[str, tf.Tensor]:
     """Embedding lookup for each categorical feature
     Can be stacked downstream to yield a tensor

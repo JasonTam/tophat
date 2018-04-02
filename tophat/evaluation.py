@@ -21,10 +21,10 @@ def items_pred_dicter(user_id: Any, item_ids: Sequence[Any],
                       item_cat_codes_df: pd.DataFrame,
                       user_num_feats_df: pd.DataFrame,
                       item_num_feats_df: pd.DataFrame,
-                      context_ind: int=None,
-                      context_cat_codes_df: pd.DataFrame=None,
+                      context_ind: int = None,
+                      context_cat_codes_df: pd.DataFrame = None,
                       # context_num_feats: pd.DataFrame=None,
-                      input_fwd_d: Optional[Dict[str, tf.Tensor]]=None,
+                      input_fwd_d: Optional[Dict[str, tf.Tensor]] = None,
                       ) -> Dict[Union[str, tf.Tensor], Any]:
     # todo: a little redundancy with the dicters in tophat.core
     """Creates feeds for forward prediction for a single user

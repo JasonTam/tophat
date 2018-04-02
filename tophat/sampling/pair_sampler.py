@@ -39,8 +39,8 @@ def feed_via_pair(
         pos_item_feed_d: Dict[str, Iterable],
         neg_item_feed_d: Dict[str, Iterable],
         context_feed_d: Dict[str, Iterable],
-        misc_feed_d: Optional[Dict[str, Iterable]]=None,
-        input_pair_d: Optional[Dict[str, tf.Tensor]]=None,
+        misc_feed_d: Optional[Dict[str, Iterable]] = None,
+        input_pair_d: Optional[Dict[str, tf.Tensor]] = None,
         ) -> Dict[str, np.array]:
 
     feed_pair_dict = dict(ChainMap(
@@ -117,10 +117,11 @@ class PairSampler(object):
             sampled as negatives. But they will not be chosen as positives.
 
     Terminology:
-        positive: the interactions to sample from
-        non-negatives: interactions that are safeguarded against being
-            sampled as negatives. But not necessarily sampled as positives.
-            _Usually_ though, they will be the same.
+
+        - *positives*: the interactions to sample from
+        - *non-negatives*: interactions that are safeguarded against being
+          sampled as negatives. But not necessarily sampled as positives.
+          _Usually_ though, they will be the same.
 
     """
     def __init__(self,
@@ -130,16 +131,16 @@ class PairSampler(object):
                  feat_codes_df_d: Dict[FGroup, pd.DataFrame],
                  feats_d_d: Dict[FGroup, Dict[FType, pd.DataFrame]],
                  input_pair_d: Dict[str, tf.Tensor],
-                 batch_size: int=1024,
-                 shuffle: bool=True,
-                 n_epochs: int=-1,
-                 uniform_users: bool=False,
-                 method: str='uniform',
+                 batch_size: int = 1024,
+                 shuffle: bool = True,
+                 n_epochs: int = -1,
+                 uniform_users: bool = False,
+                 method: str = 'uniform',
                  model=None,
-                 sess: tf.Session=None,
-                 use_ds_iter: bool=True,
-                 seed: int=0,
-                 non_negs_df: Optional[pd.DataFrame]=None,
+                 sess: tf.Session = None,
+                 use_ds_iter: bool = True,
+                 seed: int = 0,
+                 non_negs_df: Optional[pd.DataFrame] = None,
                  ):
 
         self.seed = seed
@@ -150,7 +151,7 @@ class PairSampler(object):
 
         # Index alignment
         feats_codes_dfs = {
-            # TODO: fishy... this breaks sometimes if chagned to `reindex`
+            # TODO: fishy... this breaks sometimes if changed to `reindex`
             fg: feat_codes_df_d[fg].loc[cats_d[cols_d[fg]]]
             for fg in [FGroup.USER, FGroup.ITEM]
         }
@@ -283,14 +284,14 @@ class PairSampler(object):
     def from_data_loader(cls,
                          train_data_loader: TrainDataLoader,
                          input_pair_d: Dict[str, tf.Tensor],
-                         batch_size: int=1024,
-                         shuffle: bool=True,
-                         n_epochs: int=-1,
-                         uniform_users: bool=False,
-                         method: str='uniform',
+                         batch_size: int = 1024,
+                         shuffle: bool = True,
+                         n_epochs: int = -1,
+                         uniform_users: bool = False,
+                         method: str = 'uniform',
                          model=None,
-                         use_ds_iter: bool=True,
-                         seed: int=0,
+                         use_ds_iter: bool = True,
+                         seed: int = 0,
                          non_negs_df: Optional[pd.DataFrame] = None,
                          ):
         return cls(
@@ -318,13 +319,13 @@ class PairSampler(object):
             return self.iter_by_xn()
 
     def sample_uniform(self, **_):
-        """See tophat.uniform.sample_uniform"""
+        """See :func:`tophat.sampling.uniform.sample_uniform`"""
         return uniform.sample_uniform(self.n_items, self.batch_size)
 
     def sample_uniform_verified(self,
                                 user_inds_batch: Sequence[int],
                                 **_):
-        """See tophat.uniform.sample_uniform_verified"""
+        """See :func:`tophat.sampling.uniform.sample_uniform_verified`"""
         return uniform.sample_uniform_verified(self.n_items,
                                                self.non_neg_xn_csr,
                                                user_inds_batch)
@@ -333,6 +334,7 @@ class PairSampler(object):
                                user_inds_batch: Sequence[int],
                                pos_item_inds_batch: Sequence[int],
                                **_):
+        """See :func:`tophat.sampling.uniform.sample_uniform_ordinal`"""
         return uniform.sample_uniform_ordinal(
             self.n_items,
             self.non_neg_xn_csr,
@@ -343,9 +345,9 @@ class PairSampler(object):
     def sample_adaptive(self,
                         user_inds_batch: Sequence[int],
                         pos_item_inds_batch: Sequence[int],
-                        use_first_violation: bool=False,
+                        use_first_violation: bool = False,
                         ):
-        """See tophat.adaptive.sample_adaptive"""
+        """See :func:`tophat.sampling.adaptive.sample_adaptive`"""
         return adaptive.sample_adaptive(self.n_items,
                                         self.max_sampled,
                                         self.score_via_inds_fn,
@@ -358,9 +360,9 @@ class PairSampler(object):
     def sample_adaptive_ordinal(self,
                                 user_inds_batch: Sequence[int],
                                 pos_item_inds_batch: Sequence[int],
-                                use_first_violation: bool=False,
+                                use_first_violation: bool = False,
                                 ):
-        """See tophat.adaptive.sample_adaptive"""
+        """See :func:`tophat.sampling.adaptive.sample_adaptive`"""
         return adaptive.sample_adaptive(self.n_items,
                                         self.max_sampled,
                                         self.score_via_inds_fn,
@@ -373,10 +375,10 @@ class PairSampler(object):
     def sample_adaptive_warp(self,
                              user_inds_batch: Sequence[int],
                              pos_item_inds_batch: Sequence[int],
-                             use_first_violation: bool=True,
-                             return_n_samp: bool=True,
+                             use_first_violation: bool = True,
+                             return_n_samp: bool = True,
                              ):
-        """See tophat.adaptive.sample_adaptive"""
+        """See :func:`tophat.sampling.adaptive.sample_adaptive`"""
         return adaptive.sample_adaptive(self.n_items,
                                         self.max_sampled,
                                         self.score_via_inds_fn,

@@ -12,17 +12,24 @@ def preset_interactions(fields_d: Dict[Any, Iterable[str]],
     Args:
         fields_d: Dictionary of group_name to iterable of feat_names that
             belong to that group
-            ex) `fields_d = {'user': {'gender', 'age'}, 
-                         'item': {'brand', 'pcat', 'price'}}`
+            ex) `fields_d = {'user': {'gender', 'age'},
+            'item': {'brand', 'pcat', 'price'}}`
         interaction_type: One of {'intra', 'inter'}
-            intra: Include interactions for all features agnostic of group
-            inter: Include only interactions between different groups
+
+            - intra: Include interactions for all features agnostic of group
+            - inter: Include only interactions between different groups
+              (this will mimic the formulation of [1]_)
         max_order: Max order of interactions
             If `interaction_type` is `inter`, `max_order` should be no larger
             than 3
 
     Returns:
         Iterable of interaction sets (set will contain feature names)
+
+    References:
+        .. [1] Kula, Maciej. "Metadata embeddings for user and item cold-start
+           recommendations." arXiv preprint arXiv:1507.08439 (2015).
+
     """
 
     if interaction_type == 'intra':  # includes intra field
@@ -104,11 +111,11 @@ def kernel_via_xn_sets(interaction_sets: Iterable[frozenset],
                        emb_d: Mapping[Any, tf.Tensor]) -> tf.Tensor:
     """Computes arbitrary order interaction terms
     Reuses lower order terms
-    
-    Differs from typical HOFM as we will reuse lower order embeddings
-        (not actually sure if this is OK in terms of expressiveness)
-        In theory, we're supposed to use a new param matrix for each order
-        Much like how we use a bias param for order=1
+
+    Differs from typical HOFM [2]_ as we will reuse lower order embeddings
+    (not actually sure if this is OK in terms of expressiveness).
+    In theory, we're supposed to use a new param matrix for each order
+    Much like how we use a bias param for order=1
             
     Args:
         interaction_sets: Interactions to create nodes for
@@ -118,8 +125,8 @@ def kernel_via_xn_sets(interaction_sets: Iterable[frozenset],
         Interactions that have passed through the kernel
         
     References:
-        Blondel, Mathieu, et al. "Higher-Order Factorization Machines." 
-            Advances in Neural Information Processing Systems. 2016.
+        .. [2] Blondel, Mathieu, et al. "Higher-Order Factorization Machines."
+           Advances in Neural Information Processing Systems. 2016.
 
     """
     # TODO: for now we assume that all dependencies of previous order are met

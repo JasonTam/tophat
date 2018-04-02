@@ -1,6 +1,5 @@
 import tensorflow as tf
-from tensorflow.contrib.layers import l2_regularizer
-from typing import Dict, Callable, Iterable, List
+from typing import Dict, Callable, List
 from collections import ChainMap
 
 from tophat.constants import FGroup
@@ -97,11 +96,10 @@ class BilinearNetWithNum(BilinearNet):
                  user_cat_cols: List[str],
                  item_cat_cols: List[str],
                  context_cat_cols: List[str],
-                 interaction_type: str='inter',
-                 num_meta: Dict[str, int]=None,
-                 l2_vis: float=0.,
-                 ruin: bool=True,
-
+                 interaction_type: str = 'inter',
+                 num_meta: Dict[str, int] = None,
+                 l2_vis: float = 0.,
+                 ruin: bool = True,
                  ):
         BilinearNet.__init__(self, embedding_map,
                              user_cat_cols,
@@ -295,9 +293,9 @@ class BilinearNetWithNumFC(BilinearNet):
                  user_cat_cols: List[str],
                  item_cat_cols: List[str],
                  context_cat_cols: List[str],
-                 interaction_type: str='inter',
-                 num_meta: Dict[str, int]=None,
-                 deep_net_fn: Callable=simple_fc,
+                 interaction_type: str = 'inter',
+                 num_meta: Dict[str, int] = None,
+                 deep_net_fn: Callable = simple_fc,
                  deep_reg=None,
                  ):
         BilinearNet.__init__(self, embedding_map,

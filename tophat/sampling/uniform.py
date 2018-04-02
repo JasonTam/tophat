@@ -1,10 +1,10 @@
 import numpy as np
 import scipy.sparse as sp
-from tophat.utils.sparse_utils import get_row_nz, get_row_nz_data
+from tophat.utils.sparse_utils import get_row_nz
 from typing import Sequence
 
 
-def sample_uniform(n_items: int, batch_size: int=1):
+def sample_uniform(n_items: int, batch_size: int = 1):
     """Sample negatives uniformly over entire catalog of items
     This is fast, but there is a chance of accidentally sampling a positive
     (See `sample_uniform_verified` to prevent this caveat)
