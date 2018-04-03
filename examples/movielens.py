@@ -18,6 +18,19 @@ def movielens_cfg():
         download_if_missing=True,
     )
 
+    # Labels for tensorboard projector
+    item_lbls_df = pd.DataFrame(data['item_labels']).reset_index()
+    item_lbls_df.columns = ['item_id', 'item_lbls']
+    genre_lbls_df = pd.DataFrame([l.split(':')[-1]
+                                  for l in data['item_feature_labels']]
+                                 ).reset_index()
+    genre_lbls_df.columns = ['genre_id', 'genre_lbls']
+
+    names = {
+        'item_id': item_lbls_df,
+        'genre_id': genre_lbls_df,
+    }
+
     # Converting to tophat data containers
     xn_train = InteractionsSource(
         path=pd.DataFrame(np.vstack(data['train'].nonzero()).T,
@@ -53,7 +66,7 @@ def movielens_cfg():
         'n_steps': 10000+1,
         'log_every': 500,
         'eval_every': 1000,
-        'save_every': 99999,
+        'save_every': 10000,
 
         # 'l2_emb': 1e-5,
 
@@ -95,6 +108,7 @@ def movielens_cfg():
         'validation_params': validation_params,
         'seed': SEED,
         'log_dir': f'/tmp/tensorboard-logs/tophat-movielens',
+        'names': names,
     }
 
     cfg = defaultdict(lambda: None, config_d)

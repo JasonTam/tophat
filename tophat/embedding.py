@@ -5,7 +5,7 @@ import pandas as pd
 import tensorflow as tf
 from collections import defaultdict
 from tensorflow.contrib.tensorboard.plugins import projector
-from typing import Iterable, Dict, Tuple, Optional, List, Any
+from typing import Iterable, Dict, Tuple, Optional, List, Any, Union
 
 from tophat.constants import FGroup
 from tophat.utils.metadata_proc import write_metadata_emb
@@ -265,23 +265,31 @@ class EmbeddingProjector(object):
     Args:
         embedding_map: Embedding map object
         summary_writer: Summary writer object
-        path_names_d: Dictionary of human-readable labels
         log_dir: Directory to write metadata to 
             (should be the same as the log directory of checkpoints etc)
+        names_d: Dictionary of human-readable labels per element in vocab. 
+            The values can either be a path to a csv file or a dataframe. The 
+            index should be in the same units as stored in `cats_d`. The other 
+            columns will be used as label names (can have multiple columns 
+            for multiple labels).
+            If `None`, the embedding projector will just use the raw id of the 
+            vocab
     """
 
     def __init__(self,
                  embedding_map: EmbeddingMap,
                  summary_writer: tf.summary.FileWriter,
-                 path_names_d: Dict[str, str],
                  log_dir: str,
+                 names_d: Optional[
+                     Dict[str, Union[str, pd.DataFrame]]] = None,
                  ):
 
         self.summary_writer = summary_writer
         feat_to_metapath = write_metadata_emb(
             embedding_map.cats_d,
-            path_names_d,
-            log_dir)
+            log_dir,
+            names_d,
+        )
 
         self.projection_config = projector.ProjectorConfig()
         emb_proj_d = {}
