@@ -1,16 +1,16 @@
-import os
 from time import time
 
 import numpy as np
+import os
 import pandas as pd
 import tensorflow as tf
 from lib_cerebro_py.log import logger
 
-from tophat.core import FactModel
 from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.evaluation import Validator
 from tophat.nets import BilinearNetWithNum
+from tophat.tasks.factorization import FactModel
 from tophat.utils.config_parser import Config
 
 config = Config('config/config_amzn_bpr.py')

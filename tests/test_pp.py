@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-from tophat.core import pair_dict_via_cols
 from tophat.sampling import pair_sampler
+from tophat.tasks.factorization import pair_dict_via_cols
 
 
 class TestPP(unittest.TestCase):

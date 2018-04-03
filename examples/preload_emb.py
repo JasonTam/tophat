@@ -10,14 +10,14 @@ import tensorflow as tf
 from lib_cerebro_py.log import logger
 
 from jobs import RepresentationExportJob
-from tophat.core import FactModel
-from tophat.d2v.d2v import fit_interactions, model_to_dfs
 from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.embedding import inits_via_avro, inits_via_df
 from tophat.evaluation import Validator
 from tophat.nets import BilinearNet
 from tophat.sampling.pair_sampler import PairSampler
+from tophat.tasks.d2v import fit_interactions, model_to_dfs
+from tophat.tasks.factorization import FactModel
 from tophat.utils.config_parser import Config
 
 

@@ -11,9 +11,9 @@ from typing import Dict, Any, Generator, Tuple, Sequence, Optional, Union
 
 from tophat.constants import FType
 from tophat.data import load_simple_warm_cats, load_simple, TrainDataLoader
-from tophat.utils.pp_utils import append_dt_extracts
+from tophat.tasks.factorization import FactModel
 from tophat.utils.log import logger
-from tophat.core import FactModel
+from tophat.utils.pp_utils import append_dt_extracts
 
 
 def items_pred_dicter(user_id: Any, item_ids: Sequence[Any],

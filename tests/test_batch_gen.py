@@ -2,11 +2,11 @@ import unittest
 
 import numpy as np
 
-from tophat.core import FactModel
 from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap
 from tophat.nets import BilinearNetWithNum
 from tophat.sampling import pair_sampler
+from tophat.tasks.factorization import FactModel
 from tophat.utils.config_parser import Config
 
 

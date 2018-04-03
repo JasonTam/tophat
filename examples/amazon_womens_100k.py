@@ -6,12 +6,12 @@ import os
 import tensorflow as tf
 from lib_cerebro_py.log import logger
 
-from tophat.core import FactModel
 from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.evaluation import Validator
 from tophat.nets import BilinearNetWithNum
 from tophat.sampling import pair_sampler
+from tophat.tasks.factorization import FactModel
 from tophat.utils.config_parser import Config
 
 env = 'local'
