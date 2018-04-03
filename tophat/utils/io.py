@@ -1,5 +1,42 @@
+import fastavro as avro
+from pathlib import Path
 from lib_cerebro_py.custom_io import *
-from typing import Dict
+from typing import Dict, Union, List, Any, Optional
+
+
+def write_vocab(vocab_dir: Union[str, Path],
+                cats_d: Dict[str, List[Any]],
+                ):
+    """Writes a dictionary of categories to vocab files
+    Each line of the file will contain 1 word of the vocabulary
+    """
+    vocab_dir = Path(vocab_dir)
+    for k, v in cats_d.items():
+        with open(vocab_dir / f'{k}.vocab', 'w') as f:
+            f.write('\n'.join(map(str, v)) + '\n')
+
+
+def load_vocab(vocab_dir: Union[str, Path],
+               pattern: Optional[str] = '*',
+               ) -> Dict[str, List[Any]]:
+    """Loads a dictionary of categories from a directory of vocab files
+    
+    Args:
+        vocab_dir: directory containing vocab files
+        pattern: glob pattern for finding vocab files. 
+            Note: vocab files created by `write_vocab` will have `.vocab` ext
+
+    Returns: dictionary of vocab lists
+
+    """
+    vocab_dir = Path(vocab_dir)
+    # WARNING: this reads the vocab as str type (could have been Any type)
+    cats_d = {}
+    for vocab_path in vocab_dir.glob(pattern):
+        with open(vocab_path, 'r') as f:
+            v = f.read().splitlines()
+            cats_d[vocab_path.stem] = v
+    return cats_d
 
 
 # This should be moved to libcerepy
@@ -15,6 +52,22 @@ def import_pickle(path, compression='infer'):
             return pickle.load(open_fun(path, 'rb'))
     else:
         return pickle.loads(decompress_fun(path))
+
+
+def read_avro(path_or_buf) -> pd.DataFrame:
+    if isinstance(path_or_buf, str):
+        buf = open(path_or_buf, 'rb')
+    else:
+        buf = path_or_buf
+
+    reader = avro.reader(buf)
+    df = pd.DataFrame(list(reader))
+    try:
+        buf.close()
+    except AttributeError:
+        logger.info('Stream has no attribute close')
+
+    return df
 
 
 def load_factors(dir_factors: str) -> Dict[str, pd.DataFrame]:

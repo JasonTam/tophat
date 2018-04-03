@@ -9,6 +9,7 @@ from typing import Iterable, Dict, Tuple, Optional, List, Any, Union
 
 from tophat.constants import FGroup
 from tophat.utils.metadata_proc import write_metadata_emb
+from tophat.utils.io import read_avro
 from tophat.utils.log import logger
 
 
@@ -207,25 +208,6 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
 def inits_via_avro(path_or_buf, cats: List[Any]
                    ) -> tf.Tensor:
     return inits_via_df(read_avro(path_or_buf), cats)
-
-
-def read_avro(path_or_buf) -> pd.DataFrame:
-    # TODO: this should come from some io package
-    import fastavro as avro
-
-    if isinstance(path_or_buf, str):
-        buf = open(path_or_buf, 'rb')
-    else:
-        buf = path_or_buf
-
-    reader = avro.reader(buf)
-    df = pd.DataFrame(list(reader))
-    try:
-        buf.close()
-    except AttributeError:
-        logger.info('Stream has no attribute close')
-
-    return df
 
 
 def inits_via_df(df: pd.DataFrame, cats: List[Any]) -> tf.Tensor:
