@@ -11,6 +11,8 @@ def write_vocab(vocab_dir: Union[str, Path],
     Each line of the file will contain 1 word of the vocabulary
     """
     vocab_dir = Path(vocab_dir)
+    if not vocab_dir.exists():
+        vocab_dir.mkdir()
     for k, v in cats_d.items():
         with open(vocab_dir / f'{k}.vocab', 'w') as f:
             f.write('\n'.join(map(str, v)) + '\n')
