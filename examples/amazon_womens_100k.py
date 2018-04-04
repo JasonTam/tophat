@@ -11,7 +11,7 @@ from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.evaluation import Validator
 from tophat.nets import BilinearNetWithNum
 from tophat.sampling import pair_sampler
-from tophat.tasks.factorization import FactModel
+from tophat.tasks.factorization import FactorizationTask
 from tophat.utils.config_parser import Config
 
 env = 'local'
@@ -51,7 +51,7 @@ def run(config):
         vis_emb_user_col=train_data_loader.user_col,
     )
 
-    model = FactModel(
+    model = FactorizationTask(
         net=BilinearNetWithNum(
             embedding_map=embedding_map,
             num_meta=train_data_loader.num_meta,

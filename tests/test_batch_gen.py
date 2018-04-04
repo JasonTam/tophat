@@ -6,7 +6,7 @@ from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap
 from tophat.nets import BilinearNetWithNum
 from tophat.sampling import pair_sampler
-from tophat.tasks.factorization import FactModel
+from tophat.tasks.factorization import FactorizationTask
 from tophat.utils.config_parser import Config
 
 
@@ -26,7 +26,7 @@ class TestBG(unittest.TestCase):
         self.embedding_map = EmbeddingMap(self.train_data_loader,
                                           embedding_dim=16)
 
-        self.model = FactModel(net=BilinearNetWithNum(
+        self.model = FactorizationTask(net=BilinearNetWithNum(
             embedding_map=self.embedding_map,
             num_meta=self.train_data_loader.num_meta)
         )

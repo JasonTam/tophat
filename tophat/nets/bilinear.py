@@ -62,7 +62,7 @@ class BilinearNet(object):
         interaction_sets = preset_interactions(
             fields_d, interaction_type=self.interaction_type)
 
-        with tf.name_scope('interaction_model'):
+        with tf.name_scope('interactions'):
             contrib_dot = kernel_via_xn_sets(interaction_sets, embs_all)
             # bias for cat feature factors
             contrib_bias = tf.add_n(list(biases.values()), name='contrib_bias')
@@ -216,7 +216,7 @@ class BilinearNetWithNum(BilinearNet):
         interaction_sets = preset_interactions(
             fields_d, interaction_type=self.interaction_type)
 
-        with tf.name_scope('interaction_model'):
+        with tf.name_scope('interactions'):
             contrib_dot = kernel_via_xn_sets(interaction_sets, embs_all)
             # bias for cat feature factors
             if len(biases.values()):
@@ -339,7 +339,7 @@ class BilinearNetWithNumFC(BilinearNet):
         interaction_sets = preset_interactions(
             fields_d, interaction_type=self.interaction_type)
 
-        with tf.name_scope('interaction_model'):
+        with tf.name_scope('interactions'):
             xn_muls = muls_via_xn_sets(interaction_sets, embs_all)
             # Bi-Interaction (actually, we allow for >=2 interactions)
             f_bi = tf.add_n([node for s, node in xn_muls.items()

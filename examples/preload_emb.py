@@ -17,7 +17,7 @@ from tophat.evaluation import Validator
 from tophat.nets import BilinearNet
 from tophat.sampling.pair_sampler import PairSampler
 from tophat.tasks.d2v import fit_interactions, model_to_dfs
-from tophat.tasks.factorization import FactModel
+from tophat.tasks.factorization import FactorizationTask
 from tophat.utils.config_parser import Config
 
 
@@ -90,7 +90,7 @@ class FitJob(object):
             init_emb_d=init_emb_d,
         )
 
-        self.model = FactModel(
+        self.model = FactorizationTask(
             net=BilinearNet(
                 embedding_map=self.embedding_map),
             batch_size=self.batch_size,

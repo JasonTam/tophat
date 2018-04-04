@@ -4,8 +4,8 @@ from tophat.nets.bilinear import *
 from tophat.utils.ph_conversions import *
 
 
-class FactModel(object):
-    """ Factorization Model
+class FactorizationTask(object):
+    """ Factorization Task
 
     Args:
         net: Prediction network
@@ -109,7 +109,7 @@ class FactModel(object):
                     for k, v in d.items()
                     if k.startswith(tuple(prefixes))}
 
-        with tf.name_scope(f'model_{self.name}'):
+        with tf.name_scope(f'task_{self.name}'):
             # Split up input into pos & neg interaction
             shared_prefixes = {
                 USER_VAR_TAG + TAG_DELIM,

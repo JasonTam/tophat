@@ -11,7 +11,7 @@ from typing import Dict, Any, Generator, Tuple, Sequence, Optional, Union
 
 from tophat.constants import FType
 from tophat.data import load_simple_warm_cats, load_simple, TrainDataLoader
-from tophat.tasks.factorization import FactModel
+from tophat.tasks.factorization import FactorizationTask
 from tophat.utils.log import logger
 from tophat.utils.pp_utils import append_dt_extracts
 
@@ -435,7 +435,7 @@ class Validator(object):
     """
 
     def __init__(self, config, train_data_loader: TrainDataLoader,
-                 model_ref: FactModel,
+                 model_ref: FactorizationTask,
                  limit_items=-1, n_users_eval=200,
                  include_cold=True, cold_only=False, n_xns_as_cold=5,
                  seed: int=0):

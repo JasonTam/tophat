@@ -10,7 +10,7 @@ from tophat.data import TrainDataLoader
 from tophat.embedding import EmbeddingMap, EmbeddingProjector
 from tophat.evaluation import Validator
 from tophat.nets import BilinearNetWithNum
-from tophat.tasks.factorization import FactModel
+from tophat.tasks.factorization import FactorizationTask
 from tophat.utils.config_parser import Config
 
 config = Config('config/config_amzn_vbpr.py')
@@ -54,7 +54,7 @@ def run():
         vis_emb_user_col=train_data_loader.user_col,
     )
 
-    model = FactModel(
+    model = FactorizationTask(
         net=BilinearNetWithNum(
             embedding_map=embedding_map,
             num_meta=train_data_loader.num_meta),
