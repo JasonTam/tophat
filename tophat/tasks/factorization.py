@@ -1,10 +1,11 @@
 import itertools as it
+from tophat.tasks.base import BaseTask
 from tophat import losses
 from tophat.nets.bilinear import *
 from tophat.utils.ph_conversions import *
 
 
-class FactorizationTask(object):
+class FactorizationTask(BaseTask):
     """ Factorization Task
 
     Args:
@@ -29,9 +30,9 @@ class FactorizationTask(object):
                  name: Optional[str] = None,
                  ):
 
-        self.seed = seed
+        super().__init__(batch_size=batch_size, seed=seed, name=name)
+
         self.net = net
-        self.batch_size = batch_size
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.input_pair_d: Dict[str, tf.Tensor] = None
@@ -46,8 +47,6 @@ class FactorizationTask(object):
         # for k-OS loss
         if item_col:
             self.n_items = len(self.net.embedding_map.cats_d[item_col])
-
-        self.name = name or ''
 
     def get_fwd_dict(self, batch_size: int = None):
         """Gets the placeholders required for the forward prediction of a
@@ -137,12 +136,11 @@ class FactorizationTask(object):
                                     first_violation, self.n_items,
                                     )
 
-    def training(self, loss, primary: bool = True) -> tf.Operation:
+    def training(self, loss) -> tf.Operation:
         """Makes the training operation and attaches some summary values
 
         Args:
             loss: Loss operation
-            primary: flag to denote primary model (as opposed to auxiliary)
 
         Returns:
             Training operation
@@ -152,17 +150,13 @@ class FactorizationTask(object):
         loss_reg = sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
         loss_tot = loss + loss_reg
 
-        if primary:
-            tf.summary.scalar('loss', loss)  # monitor loss w/o reg
-            tf.summary.scalar('loss_reg', loss_reg)
+        tf.summary.scalar(f'{self.name}/loss', loss)  # loss w/o reg
+        tf.summary.scalar(f'{self.name}/loss_reg', loss_reg)
 
-            with tf.variable_scope('global'):
-                global_step = tf.get_variable(
-                    'global_step', shape=[], trainable=False,
-                    initializer=tf.constant_initializer(0))
-        else:
-            with tf.variable_scope('global', reuse=True):
-                global_step = tf.get_variable('global_step')
+        with tf.variable_scope('global'):
+            task_step = tf.get_variable(
+                f'{self.name}_step', shape=[], trainable=False,
+                initializer=tf.constant_initializer(0))
 
-        train_op = self.optimizer.minimize(loss_tot, global_step=global_step)
+        train_op = self.optimizer.minimize(loss_tot, global_step=task_step)
         return train_op

@@ -70,6 +70,8 @@ class FeatureSource(object):
                 feat_df = feat_df.compute()
             if self.index_col:
                 feat_df.set_index(self.index_col, inplace=True)
+                duplicates = feat_df.index.duplicated(keep='last')
+                feat_df = feat_df.loc[~duplicates]
             if self.use_cols:
                 self.data = feat_df[self.use_cols]
             elif self.use_cols is not None and self.use_cols == []:
@@ -256,11 +258,11 @@ class TrainDataLoader(object):
     def __init__(self,
                  interactions_train: InteractionsSource,
                  group_features:
-                 Dict[FGroup, Optional[Iterable[FeatureSource]]]=None,
-                 specific_feature: Dict[FGroup, bool]=None,
-                 context_cols: Optional[Iterable[str]]=None,
+                    Dict[FGroup, Optional[Iterable[FeatureSource]]] = None,
+                 specific_feature: Optional[Dict[FGroup, bool]] = None,
+                 context_cols: Optional[Iterable[str]] = None,
                  batch_size: int=128,
-                 existing_cats_d: Optional[Dict[str, List[Any]]]=None,
+                 existing_cats_d: Optional[Dict[str, List[Any]]] = None,
                  name: Optional[str]=None,
                  ):
         self.name = name or interactions_train.name or ''

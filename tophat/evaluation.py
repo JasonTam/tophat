@@ -315,7 +315,7 @@ def eval_things(sess,
     # for m, m_tup in metric_ops_d.items():
     #     metric_score = sess.run(m_tup[0])
     #     metric_val_summary = tf.Summary(value=[
-    #         tf.Summary.Value(tag=f'{m}_val',
+    #         tf.Summary.Value(tag=f'{self.name}/{m}_val',
     #                          simple_value=metric_score)])
     #     logger.info(f'(val){m} = {metric_score}')
     #     if summary_writer is not None:
@@ -326,7 +326,7 @@ def eval_things(sess,
         metric_score = np.mean(vals)
         metric_score_std = np.std(vals)
         metric_val_summary = tf.Summary(value=[
-            tf.Summary.Value(tag=f'{m}_val',
+            tf.Summary.Value(tag=f'{self.name}/{m}_val',
                              simple_value=metric_score)])
         logger.info(f'(val){m} = {metric_score} +/- {metric_score_std}')
         if summary_writer is not None:
@@ -395,7 +395,7 @@ def eval_things_context(
     # for m, m_tup in metric_ops_d.items():
     #     metric_score = sess.run(m_tup[0])
     #     metric_val_summary = tf.Summary(value=[
-    #         tf.Summary.Value(tag=f'{m}_val',
+    #         tf.Summary.Value(tag=f'{self.name}/{m}_val',
     #                          simple_value=metric_score)])
     #     logger.info(f'(val){m} = {metric_score}')
     #     if summary_writer is not None:
@@ -405,7 +405,7 @@ def eval_things_context(
         metric_score = np.mean(vals)
         metric_score_std = np.std(vals)
         metric_val_summary = tf.Summary(value=[
-            tf.Summary.Value(tag=f'{m}_val',
+            tf.Summary.Value(tag=f'{self.name}/{m}_val',
                              simple_value=metric_score)])
         logger.info(f'(val){m} = {metric_score} +/- {metric_score_std}')
         if summary_writer is not None:
@@ -438,8 +438,11 @@ class Validator(object):
                  model_ref: FactorizationTask,
                  limit_items=-1, n_users_eval=200,
                  include_cold=True, cold_only=False, n_xns_as_cold=5,
-                 seed: int=0):
+                 seed: int=0,
+                 name: Optional[str] = None,
+                 ):
 
+        self.name = name or ''
         self.model_ref = model_ref
         self.seed = seed
         np.random.seed(self.seed)
@@ -565,7 +568,10 @@ class Validator(object):
             self.interactions_df[self.user_col_val]
         ).intersection(set(self.user_cat_codes_df.index))))
 
-        self.item_ids = self.cats_d[self.item_col_val].copy()
+        # TODO: could be less sketchy (esp considering the cold stuff above^)
+        # self.item_ids = self.cats_d[self.item_col_val].copy()
+        self.item_ids = self.item_cat_codes_df.index.tolist()
+
         if limit_items >= 0:
             # This will consider all "new"/validation items
             #   plus a limited selection of "old"/training items
@@ -663,7 +669,7 @@ class Validator(object):
             metric_score = np.mean(vals)
             metric_score_std = np.std(vals)
             metric_val_summary = tf.Summary(value=[
-                tf.Summary.Value(tag=f'{m}_val',
+                tf.Summary.Value(tag=f'{self.name}/{m}_val',
                                  simple_value=metric_score)])
             logger.info(f'(val){m} = {metric_score} +/- {metric_score_std}')
             if summary_writer is not None:
