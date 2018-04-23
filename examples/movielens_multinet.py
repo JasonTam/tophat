@@ -1,16 +1,20 @@
+import tensorflow as tf
 import numpy as np
 import pandas as pd
 import os
-from collections import defaultdict
 
+import tophat.callbacks as cbks
 from tophat.data import FeatureSource, InteractionsSource
 from tophat.constants import FType, FGroup
+from tophat.tasks.wrapper import FactorizationTaskWrapper
+from tophat.core import TophatModel
+from tophat.evaluation import Validator
+
 from lightfm.datasets.movielens import fetch_movielens
-from jobs.fit_job import FitJob
 
 SEED = 322
 
-# Outer scope shared params
+# Get movielens data via lightfm
 data = fetch_movielens(
     indicator_features=False,
     genre_features=True,
@@ -18,7 +22,20 @@ data = fetch_movielens(
     download_if_missing=True,
 )
 
-# Converting to tophat data containers
+# Labels for tensorboard projector
+item_lbls_df = pd.DataFrame(data['item_labels']).reset_index()
+item_lbls_df.columns = ['item_id', 'item_lbls']
+genre_lbls_df = pd.DataFrame([l.split(':')[-1]
+                              for l in data['item_feature_labels']]
+                             ).reset_index()
+genre_lbls_df.columns = ['genre_id', 'genre_lbls']
+
+names_d = {
+    'item_id': item_lbls_df,
+    'genre_id': genre_lbls_df,
+}
+
+# #################### [ INTERACTIONS ] ####################
 xn_train = InteractionsSource(
     path=pd.DataFrame(np.vstack(data['train'].nonzero()).T,
                       columns=['user_id', 'item_id']),
@@ -32,6 +49,18 @@ xn_test = InteractionsSource(
     user_col='user_id',
     item_col='item_id',
 )
+
+# Synthetic Genre Favorites Interactions
+xn_genre_favs = InteractionsSource(
+    path=os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                      '../data/movielens', 'genre_favs_synthetic.msg'),
+    user_col='user_id',
+    item_col='genre_id',
+    load_fn=pd.read_msgpack,
+)
+
+
+# #################### [ FEATURES ] ####################
 
 genre_df = pd.DataFrame(np.vstack(data['item_features'].nonzero()).T,
                         columns=['item_id', 'genre_id'])
@@ -47,77 +76,74 @@ genre_feats = FeatureSource(
     name='genre',
 )
 
-# Synthetic Genre Favorites Interactions
-genre_favs = InteractionsSource(
-    path=os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                      '../data/movielens', 'genre_favs_synthetic.msg'),
-    user_col='user_id',
-    item_col='genre_id',
-    load_fn=pd.read_msgpack,
+primary_group_features = {
+    FGroup.USER: [],
+    FGroup.ITEM: [genre_feats],
+}
+
+# #################### [ TASKS ] ####################
+opt = tf.train.AdamOptimizer(learning_rate=0.001)
+EMB_DIM = 30
+
+primary_task = FactorizationTaskWrapper(
+    loss_fn='bpr',
+    sample_method='uniform',
+    interactions=xn_train,
+    group_features=primary_group_features,
+    embedding_map_kwargs={
+        'embedding_dim': EMB_DIM,
+    },
+    batch_size=128,
+    optimizer=opt,
+    name='primary',
 )
 
+genre_task = FactorizationTaskWrapper(
+    loss_fn='bpr',
+    sample_method='uniform_verified',
+    interactions=xn_genre_favs,
+    existing_cats_d=primary_task.data_loader.cats_d,
+    embedding_map=primary_task.embedding_map,
+    batch_size=128,
+    optimizer=opt,
+    name='genre',
+)
 
-def movielens_cfg():
-
-    fit_params = {
-        'emb_dim': 30,
-        'batch_size': 128,
-        'n_steps': 10000+1,
-        'log_every': 500,
-        'eval_every': 1000,
-        'save_every': 99999,
-
-        # 'l2_emb': 1e-5,
-
-        'loss_fn': 'bpr',
-        'sample_method': 'uniform',
-        'sample_prefetch': 5,
-    }
-
-    data_params = {
-        'interactions_train': xn_train,
-        'interactions_val': xn_test,
-
-        'interactions_aux': [
-            genre_favs,
-        ],
-
-        'group_features': {
-            FGroup.USER: [],
-            FGroup.ITEM: [genre_feats],
-        },
-
-        'val_group_features': {
-            FGroup.USER: [],
-            FGroup.ITEM: [genre_feats],
-        },
-
-        'specific_feature': {
-            FGroup.USER: True,
-            FGroup.ITEM: True,
-        },
-    }
-
-    validation_params = {
+primary_validator = Validator(
+    {'interactions_val': xn_test},
+    primary_task.data_loader,
+    primary_task.task,
+    **{
         'limit_items': -1,
-        'n_users_eval': 100,
+        'n_users_eval': 200,
         'include_cold': False,
         'cold_only': False
-    }
-
-    config_d = {
-        **fit_params,
-        **data_params,
-        'validation_params': validation_params,
-        'seed': SEED,
-        'log_dir': f'/tmp/tensorboard-logs/tophat-movielens',
-    }
-
-    cfg = defaultdict(lambda: None, config_d)
-
-    return cfg
+    },
+    name='userXmovie',
+)
+primary_validator.make_ops(primary_task.task)
 
 
 if __name__ == '__main__':
-    job = FitJob(fit_config=movielens_cfg())
-    job.run()
+    LOG_DIR = '/tmp/tensorboard-logs/tophat-movielens'
+
+    model = TophatModel(tasks=[primary_task, genre_task])
+
+    summary_cb = cbks.Summary(log_dir=LOG_DIR)
+    emb_cb = cbks.Projector(log_dir=LOG_DIR,
+                            embedding_map=model.embedding_map,
+                            summary_writer=summary_cb.summary_writer,
+                            names_d=names_d)
+    val_cb = cbks.Scorer(primary_validator,
+                         summary_writer=summary_cb.summary_writer,
+                         freq=5,)
+    saver_cb = cbks.ModelSaver(LOG_DIR)
+    callbacks = [
+        summary_cb,
+        emb_cb,
+        val_cb,
+        saver_cb,
+    ]
+
+    model.fit(10, callbacks=callbacks, verbose=3)
+
