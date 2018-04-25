@@ -16,25 +16,57 @@ XN_SRC = Union[InteractionsSource, InteractionsDerived]
 
 
 class FactorizationTaskWrapper(object):
-    def __init__(self,
-                 loss_fn: Union[str, PairLossFn],
-                 sample_method: str,
-                 interactions: XN_SRC,
-                 group_features: Optional[
-                     Dict[FGroup, List[FeatureSource]]] = None,
-                 specific_feature: Optional[Dict[FGroup, bool]] = None,
-                 nonnegs: Optional[XN_SRC] = None,
-                 context_cols: Optional[List[str]] = None,
-                 existing_cats_d: Optional[Dict[str, List[Any]]] = None,
-                 embedding_map: Optional[EmbeddingMap] = None,
-                 embedding_map_kwargs: Optional = None,
-                 batch_size: Optional[int] = None,
-                 sample_prefetch: Optional[int] = 10,
-                 optimizer: Optional[tf.train.Optimizer] =
-                    tf.train.AdamOptimizer(learning_rate=0.001),
-                 seed: Optional[int] = 322,
-                 name: Optional[str] = None,
-                 ):
+    def __init__(
+            self,
+            loss_fn: Union[str, PairLossFn],
+            sample_method: str,
+            interactions: XN_SRC,
+            group_features: Optional[
+                Dict[FGroup, List[FeatureSource]]] = None,
+            specific_feature: Optional[Dict[FGroup, bool]] = None,
+            nonnegs: Optional[XN_SRC] = None,
+            context_cols: Optional[List[str]] = None,
+            parent_task_wrapper: Optional['FactorizationTaskWrapper']=None,
+            # existing_cats_d: Optional[Dict[str, List[Any]]] = None,
+            # embedding_map: Optional[EmbeddingMap] = None,
+            embedding_map_kwargs: Optional = None,
+            batch_size: Optional[int] = None,
+            sample_prefetch: Optional[int] = 10,
+            optimizer: Optional[tf.train.Optimizer] =
+            tf.train.AdamOptimizer(learning_rate=0.001),
+            build_on_init: Optional[bool] = True,
+            add_new_cats: Optional[bool] = False,
+            seed: Optional[int] = 322,
+            name: Optional[str] = None,
+    ):
+        """
+
+        Args:
+            loss_fn: pairwise loss function
+            sample_method: negative sampling method
+            interactions: source of user*item interactions
+            group_features: dictionary of user and item features
+            specific_feature: dictionary of flags to use user/item specific
+                features
+            nonnegs: interactions which are blocked from being sampled as
+                negatives
+            context_cols: context columns
+            parent_task_wrapper: a task wrapper to share categories and
+                embedding maps with
+            # existing_cats_d: existing categories
+            # embedding_map: existing embedding map
+            embedding_map_kwargs: kwargs for a new initialization of an
+                embedding_map
+            batch_size: batch size
+            sample_prefetch: number of samples to prefetch in the
+                `tf.data.Dataset.prefetch` transformation
+            optimizer: graph optimizer to use
+            build_on_init: flag to build the graph on object init
+            add_new_cats: flag to append newly seen categories
+                (if existing categories are already provided)
+            seed: random seed
+            name: name of task wrapper
+        """
 
         self.name = name or f'{self.__class__.__name__}_{hex(id(self))}'
         self.seed = seed
@@ -45,6 +77,11 @@ class FactorizationTaskWrapper(object):
         self.batch_size = batch_size
         self.optimizer = optimizer
 
+        self.parent_task_wrapper = parent_task_wrapper
+
+        existing_cats_d = parent_task_wrapper.data_loader.cats_d \
+            if parent_task_wrapper else None
+
         self.data_loader = TrainDataLoader(
             interactions_train=interactions,
             group_features=group_features,
@@ -52,11 +89,42 @@ class FactorizationTaskWrapper(object):
             context_cols=context_cols,
             batch_size=batch_size,
             existing_cats_d=existing_cats_d,
+            add_new_cats=add_new_cats,
         )
 
-        self.embedding_map = embedding_map or EmbeddingMap(
-            cats_d=self.data_loader.cats_d,
-            **embedding_map_kwargs,
+        # Attributes used when building the graph
+        self.embedding_map_kwargs = embedding_map_kwargs
+        self.embedding_map: EmbeddingMap = None
+        self.net: BilinearNet = None
+        self.task: FactorizationTask = None
+        self.nonnegs: Optional[XN_SRC] = nonnegs
+        self.sampler: PairSampler = None
+        self.dataset: tf.data.Dataset = None
+        self.input_pair_d_via_iter: Iterator = None
+        self.loss: tf.Tensor = None
+        self.train_op: tf.Operation = None
+
+        self.built = False
+        if build_on_init:
+            self.build()
+
+    def build(self):
+        """ Builds graph, sampler, and data iterators
+        Note: Make sure all cats are finalized before this is called
+        """
+
+        if (self.parent_task_wrapper is not None) and \
+                (not self.parent_task_wrapper.built):
+            self.parent_task_wrapper.build()
+
+        existing_embedding_map = self.parent_task_wrapper.embedding_map \
+            if self.parent_task_wrapper else None
+        self.embedding_map = (
+                existing_embedding_map or
+                EmbeddingMap(
+                    cats_d=self.data_loader.cats_d,
+                    **self.embedding_map_kwargs,
+                )
         )
 
         self.net = BilinearNet(
@@ -75,7 +143,7 @@ class FactorizationTaskWrapper(object):
             name=self.data_loader.name or self.name,
         )
 
-        non_neg_df = nonnegs.load().data if nonnegs else None
+        non_neg_df = self.nonnegs.load().data if self.nonnegs else None
         self.sampler = PairSampler.from_data_loader(
                 self.data_loader,
                 self.task.input_pair_d,
@@ -106,6 +174,8 @@ class FactorizationTaskWrapper(object):
         # Get our training operations
         self.loss = self.task.get_loss()
         self.train_op = self.task.training(self.loss)
+
+        self.built = True
 
     def __len__(self):
         return len(self.data_loader.interactions_df)

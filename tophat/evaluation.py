@@ -12,6 +12,7 @@ from typing import Dict, Any, Generator, Tuple, Sequence, Optional, Union
 from tophat.constants import FType
 from tophat.data import load_simple_warm_cats, load_simple, TrainDataLoader
 from tophat.tasks.factorization import FactorizationTask
+from tophat.tasks.wrapper import FactorizationTaskWrapper
 from tophat.utils.log import logger
 from tophat.utils.pp_utils import append_dt_extracts
 
@@ -418,9 +419,8 @@ class Validator(object):
     """Convenience validation object with various book-keeping
     
     Args:
-        config: 
-        train_data_loader: Training data object
-        model_ref: reference (training) model used to determine input structure
+        config:
+        parent_task_wrapper: task to reference from
         limit_items: Limits the number of items in catalog to predict over
             -1 for all items (from train and val)
             0 for only val items
@@ -434,8 +434,8 @@ class Validator(object):
         seed: seed for random state
     """
 
-    def __init__(self, config, train_data_loader: TrainDataLoader,
-                 model_ref: FactorizationTask,
+    def __init__(self, config,
+                 parent_task_wrapper: FactorizationTaskWrapper,
                  limit_items=-1, n_users_eval=200,
                  include_cold=True, cold_only=False, n_xns_as_cold=5,
                  seed: int=0,
@@ -443,7 +443,9 @@ class Validator(object):
                  ):
 
         self.name = name or ''
-        self.model_ref = model_ref
+        self.parent_task_wrapper = parent_task_wrapper
+        train_data_loader = parent_task_wrapper.data_loader
+        self.model_ref: FactorizationTask = None
         self.seed = seed
         np.random.seed(self.seed)
 
@@ -452,9 +454,8 @@ class Validator(object):
         self.item_col_val = interactions_val.item_col
         self.n_users_eval = n_users_eval
 
-        self.input_fwd_d = None
+        self.input_fwd_d: Dict[str, tf.Tensor] = None
 
-        self.model = None
         self.metric_ops_d = None
         self.reset_metrics_op = None
         self.eval_ph_d = None
@@ -589,17 +590,19 @@ class Validator(object):
 
         np.random.shuffle(self.user_ids_val)
 
+    def make_ops(self):
+        # Eval ops
+        # Define our metrics: MAP@10 and AUC
+        if not self.parent_task_wrapper.built:
+            self.parent_task_wrapper.build()
+        self.model_ref = self.parent_task_wrapper.task
         with tf.name_scope('placeholders'):
+            # TODO: can we just use model.get_fwd_dict? whats with model_ref?
             self.input_fwd_d = self.model_ref.get_fwd_dict(
                 batch_size=len(self.item_ids))
 
-    def make_ops(self, model):
-        # Eval ops
-        # Define our metrics: MAP@10 and AUC
-        self.model = model
-
         self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = \
-            make_metrics_ops(self.model.forward, self.input_fwd_d)
+            make_metrics_ops(self.model_ref.forward, self.input_fwd_d)
 
         self.init_ds()
 
@@ -639,9 +642,12 @@ class Validator(object):
 
         # Remake graph replacing placeholders with ds iterator
         self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d = \
-            make_metrics_ops(self.model.forward, self.input_batch)
+            make_metrics_ops(self.model_ref.forward, self.input_batch)
 
     def run_val(self, sess, summary_writer, step):
+        if self.metric_ops_d is None:
+            logger.info('ops missing, making them now via `self.make_ops`')
+            self.make_ops()
 
         if self.n_users_eval < 0:
             n_users_eval = len(self.user_ids_val)
@@ -696,7 +702,7 @@ class Validator(object):
             self.metric_ops_d, self.reset_metrics_op, self.eval_ph_d,
             n_xn_eval=self.n_users_eval,
             summary_writer=summary_writer, step=step,
-            model=self.model,  # todo: temp
+            model=self.model_ref,  # todo: temp
 
             context_inds=np.arange(len(self.interactions_df)),
             context_cat_codes_df=self.context_cat_codes_df,

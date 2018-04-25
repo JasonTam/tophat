@@ -120,6 +120,9 @@ class Scorer(Callback):
         self.validator = validator
         self.freq = freq
 
+    def on_train_begin(self, logs=None):
+        self.validator.make_ops()
+
     def on_epoch_end(self, epoch, logs=None):
         if self.freq and (epoch % self.freq) == 0:
             logger.info(f'Scoring ({self.validator.name}):')

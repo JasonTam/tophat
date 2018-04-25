@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import itertools as it
-from tophat.tasks.base import BaseTask
+from tophat.tasks.wrapper import FactorizationTask
 import tophat.callbacks as cbks
 from typing import Optional, List, Union, Sized
 
@@ -9,11 +9,16 @@ from typing import Optional, List, Union, Sized
 class TophatModel(object):
 
     def __init__(self,
-                 tasks: List,
+                 tasks: List[FactorizationTask],
                  sess: Optional[tf.Session] = None,
                  ):
 
         self.tasks = tasks
+        # Assure all tasks are built
+        for task in self.tasks:
+            if not task.built:
+                task.build()
+
         self.steps_per_epoch = sum((t.steps_per_epoch for t in self.tasks))
         self.task_samp_weights = [t.steps_per_epoch / self.steps_per_epoch
                                   for t in self.tasks]

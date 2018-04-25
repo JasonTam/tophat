@@ -253,6 +253,9 @@ class TrainDataLoader(object):
         specific_feature: include the primary_id-specific feature
         context_cols: columns to consider interaction context
         batch_size: batch size
+        existing_cats_d: Optional dictionary of existing categories
+        add_new_cats: if `True`, will append newly seen categories to
+            book-keeping dictionary of categories (mutates inplace)
     """
 
     def __init__(self,
@@ -263,6 +266,7 @@ class TrainDataLoader(object):
                  context_cols: Optional[Iterable[str]] = None,
                  batch_size: int=128,
                  existing_cats_d: Optional[Dict[str, List[Any]]] = None,
+                 add_new_cats: Optional[bool] = False,
                  name: Optional[str]=None,
                  ):
         self.name = name or interactions_train.name or ''
@@ -293,6 +297,7 @@ class TrainDataLoader(object):
                 group_features,
                 specific_feature,
                 existing_cats_d=self.cats_d,
+                add_new_cats=add_new_cats,
             )
 
         for fgroup in [FGroup.USER, FGroup.ITEM]:
@@ -375,7 +380,8 @@ class TrainDataLoader(object):
 
 
 def cast_cat(feats_d: Dict[FType, pd.DataFrame],
-             existing_cats_d: Optional[Dict[str, Sized]]=None
+             existing_cats_d: Optional[Dict[str, Sized]] = None,
+             add_new_cats: Optional[bool] = False,
              ) -> Dict[FType, pd.DataFrame]:
     """Casts feature columns to categorical
     -- optionally applying existing categories
@@ -383,6 +389,8 @@ def cast_cat(feats_d: Dict[FType, pd.DataFrame],
     Args:
         feats_d: Dictionary of feature dataframes
         existing_cats_d: Optional dictionary of existing categories
+        add_new_cats: if `True`, will append newly seen categories to
+            book-keeping dictionary of categories (mutates inplace)
 
     Returns:
         Modified version of `feats_d`
@@ -391,9 +399,10 @@ def cast_cat(feats_d: Dict[FType, pd.DataFrame],
     for col in feats_d[FType.CAT].columns:
         if existing_cats_d and col in existing_cats_d:
             # todo: shouldnt we be adding the new cats?
-            existing_cats_d[col] += list(
-                set(feats_d[FType.CAT][col].unique()) -
-                set(existing_cats_d[col]))
+            if add_new_cats:
+                existing_cats_d[col] += list(
+                    set(feats_d[FType.CAT][col].unique()) -
+                    set(existing_cats_d[col]))
             existing_cats = existing_cats_d[col]
         else:
             existing_cats = None
@@ -407,6 +416,7 @@ def load_simple(
         features_srcs: Dict[FGroup, Optional[Iterable[FeatureSource]]],
         specific_feature: Dict[FGroup, bool]=True,
         existing_cats_d: Optional[Dict[str, List[Any]]]=None,
+        add_new_cats: Optional[bool] = False,
 ) -> Tuple[pd.DataFrame, Dict[FGroup, Dict[FType, pd.DataFrame]]]:
     """Stand-in loader mostly for local testing
 
@@ -471,7 +481,7 @@ def load_simple(
                 feats[FType.CAT].index
 
         # Cast categorical
-        feats = cast_cat(feats, existing_cats_d)
+        feats = cast_cat(feats, existing_cats_d, add_new_cats)
 
         existing_fgroup_cats = feats[FType.CAT][col].cat.categories \
             if col in feats[FType.CAT] else None
