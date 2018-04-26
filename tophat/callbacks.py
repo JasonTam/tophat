@@ -4,6 +4,7 @@ Additional Keras-style callbacks
 References:
     https://keras.io/callbacks/
 """
+import pandas as pd
 import tensorflow as tf
 from tensorflow.python.keras._impl.keras.callbacks import *
 from tophat.utils.log import logger
@@ -119,13 +120,19 @@ class Scorer(Callback):
         self.summary_writer = summary_writer
         self.validator = validator
         self.freq = freq
+        self.score_hists = []
 
     def on_train_begin(self, logs=None):
         self.validator.make_ops()
 
     def on_epoch_end(self, epoch, logs=None):
-        if self.freq and (epoch % self.freq) == 0:
+        if self.freq and ((epoch + 1) % self.freq) == 0:
             logger.info(f'Scoring ({self.validator.name}):')
             val_scores = self.validator.run_val(
                 self.sess, self.summary_writer, epoch)
+            self.score_hists.append(val_scores)
+
+    @property
+    def score_df(self):
+        return pd.DataFrame(self.score_hists)
 

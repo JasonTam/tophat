@@ -1,7 +1,6 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-import os
 
 import tophat.callbacks as cbks
 from tophat.data import FeatureSource, InteractionsSource
@@ -77,7 +76,7 @@ EMB_DIM = 30
 
 primary_task = FactorizationTaskWrapper(
     loss_fn='bpr',
-    sample_method='uniform',
+    sample_method='uniform_verified',
     interactions=xn_train,
     group_features=primary_group_features,
     embedding_map_kwargs={
@@ -90,8 +89,7 @@ primary_task = FactorizationTaskWrapper(
 
 primary_validator = Validator(
     {'interactions_val': xn_test},
-    primary_task.data_loader,
-    primary_task.task,
+    parent_task_wrapper=primary_task,
     **{
         'limit_items': -1,
         'n_users_eval': 200,
@@ -100,7 +98,6 @@ primary_validator = Validator(
     },
     name='userXmovie',
 )
-primary_validator.make_ops(primary_task.task)
 
 
 if __name__ == '__main__':
@@ -124,5 +121,5 @@ if __name__ == '__main__':
         saver_cb,
     ]
 
-    model.fit(10, callbacks=callbacks, verbose=3)
+    model.fit(10, callbacks=callbacks, verbose=2)
 

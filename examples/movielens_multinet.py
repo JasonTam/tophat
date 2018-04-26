@@ -95,6 +95,8 @@ primary_task = FactorizationTaskWrapper(
     },
     batch_size=128,
     optimizer=opt,
+    add_new_cats=True,
+    build_on_init=False,
     name='primary',
 )
 
@@ -102,17 +104,17 @@ genre_task = FactorizationTaskWrapper(
     loss_fn='bpr',
     sample_method='uniform_verified',
     interactions=xn_genre_favs,
-    existing_cats_d=primary_task.data_loader.cats_d,
-    embedding_map=primary_task.embedding_map,
+    parent_task_wrapper=primary_task,
     batch_size=128,
     optimizer=opt,
+    add_new_cats=True,
+    build_on_init=False,
     name='genre',
 )
 
 primary_validator = Validator(
     {'interactions_val': xn_test},
-    primary_task.data_loader,
-    primary_task.task,
+    parent_task_wrapper=primary_task,
     **{
         'limit_items': -1,
         'n_users_eval': 200,
@@ -121,7 +123,6 @@ primary_validator = Validator(
     },
     name='userXmovie',
 )
-primary_validator.make_ops(primary_task.task)
 
 
 if __name__ == '__main__':

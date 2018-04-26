@@ -27,8 +27,6 @@ class FactorizationTaskWrapper(object):
             nonnegs: Optional[XN_SRC] = None,
             context_cols: Optional[List[str]] = None,
             parent_task_wrapper: Optional['FactorizationTaskWrapper']=None,
-            # existing_cats_d: Optional[Dict[str, List[Any]]] = None,
-            # embedding_map: Optional[EmbeddingMap] = None,
             embedding_map_kwargs: Optional = None,
             batch_size: Optional[int] = None,
             sample_prefetch: Optional[int] = 10,
@@ -53,8 +51,6 @@ class FactorizationTaskWrapper(object):
             context_cols: context columns
             parent_task_wrapper: a task wrapper to share categories and
                 embedding maps with
-            # existing_cats_d: existing categories
-            # embedding_map: existing embedding map
             embedding_map_kwargs: kwargs for a new initialization of an
                 embedding_map
             batch_size: batch size

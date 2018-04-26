@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import itertools as it
-from tophat.tasks.wrapper import FactorizationTask
+from tophat.tasks.wrapper import FactorizationTaskWrapper
 import tophat.callbacks as cbks
 from typing import Optional, List, Union, Sized
 
@@ -9,7 +9,7 @@ from typing import Optional, List, Union, Sized
 class TophatModel(object):
 
     def __init__(self,
-                 tasks: List[FactorizationTask],
+                 tasks: List[FactorizationTaskWrapper],
                  sess: Optional[tf.Session] = None,
                  ):
 

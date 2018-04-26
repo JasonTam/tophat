@@ -118,7 +118,7 @@ def combine_cols(df: pd.DataFrame,
             drop_cols = list(set(drop))
         else:
             drop_cols = list(set(it.chain(*cols_seq)))
-        df.drop(drop_cols, axis=1)
+        df.drop(drop_cols, axis=1, inplace=True)
 
     return df
 
