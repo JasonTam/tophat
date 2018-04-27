@@ -1,3 +1,5 @@
+# TODO: This whole file needs some serious refactoring
+
 from copy import deepcopy
 
 import numpy as np

@@ -3,7 +3,9 @@ import numpy as np
 import itertools as it
 from tophat.tasks.wrapper import FactorizationTaskWrapper
 import tophat.callbacks as cbks
-from typing import Optional, List, Union, Sized
+from tophat.evaluation import items_pred_dicter
+from tophat.constants import FGroup
+from typing import Optional, List, Union, Dict, Sequence, Any
 
 
 class TophatModel(object):
@@ -30,6 +32,7 @@ class TophatModel(object):
         self.embedding_map = self.tasks[0].embedding_map
 
         self.global_step = 0
+        self.loss_hists = None
 
     def sess_init(self):
         self.sess = self.sess or tf.Session()
@@ -95,3 +98,32 @@ class TophatModel(object):
 
             callbacks.on_epoch_end(epoch_ind)
         callbacks.on_train_end()
+
+    def predict(self,
+                user_id: Any,
+                item_ids: Sequence[Any],
+                task: Optional[FactorizationTaskWrapper] = None,
+                ):
+
+        task_wrapper = task or self.tasks[0]
+        data_loader = task_wrapper.data_loader
+        feat_codes_df = data_loader.feats_codes_df
+        num_feats_df = data_loader.num_feats_df
+
+        input_fwd_d = task_wrapper.task.get_fwd_dict()
+
+        input_tensors = items_pred_dicter(
+            user_id=user_id,
+            item_ids=item_ids,
+            user_cat_codes_df=feat_codes_df[FGroup.USER],
+            item_cat_codes_df=feat_codes_df[FGroup.ITEM],
+            user_num_feats_df=num_feats_df[FGroup.USER],
+            item_num_feats_df=num_feats_df[FGroup.ITEM],
+            input_fwd_d=input_fwd_d,
+        )
+
+        preds_op = task_wrapper.task.forward(input_fwd_d)
+        # TODO: consider moving from feed_dict to tf.data.Dataset ? (not sure)
+        preds_arr = self.sess.run(preds_op, feed_dict=input_tensors)
+
+        return preds_arr
