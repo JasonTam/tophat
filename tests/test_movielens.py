@@ -10,7 +10,7 @@ from tophat.tasks.wrapper import FactorizationTaskWrapper
 from tophat.core import TophatModel
 from tophat.evaluation import Validator
 
-from lightfm.datasets.movielens import fetch_movielens
+from tophat.datasets.movielens import fetch_movielens
 
 
 @pytest.fixture

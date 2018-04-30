@@ -1,9 +1,7 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, Union
-from dask.dataframe.core import DataFrame as ddDf
+from typing import Dict
 from pandas.api.types import CategoricalDtype
-DataFrame = Union[pd.DataFrame, ddDf]
 
 pseudo_rating_weights = {
     b'purch': 0.8119,
@@ -14,7 +12,7 @@ pseudo_rating_weights = {
 }
 
 
-def calc_pseudo_ratings(interactions_df: DataFrame,
+def calc_pseudo_ratings(interactions_df: pd.DataFrame,
                         user_col: str, item_col: str,
                         weights_d: Dict[str, float] =pseudo_rating_weights,
                         counts_col: str ='counts',
@@ -22,7 +20,7 @@ def calc_pseudo_ratings(interactions_df: DataFrame,
                         sublinear: bool =True,
                         reagg_counts: bool=False,
                         output_col: str ='pseudo_rating',
-                        ) -> DataFrame:
+                        ) -> pd.DataFrame:
     """Synthesizes a pseudo-rating based on activity type and counts
     
     Args:

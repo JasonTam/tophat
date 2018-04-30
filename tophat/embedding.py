@@ -9,8 +9,6 @@ from typing import Iterable, Dict, Tuple, Optional, List, Any, Union
 
 from tophat.constants import FGroup
 from tophat.utils.metadata_proc import write_metadata_emb
-from tophat.utils.io import read_avro
-from tophat.utils.log import logger
 
 
 class EmbeddingMap(object):
@@ -203,11 +201,6 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
                         name=f'{name_tmp.format(feat_name)}_weighted')
 
     return looked_up
-
-
-def inits_via_avro(path_or_buf, cats: List[Any]
-                   ) -> tf.Tensor:
-    return inits_via_df(read_avro(path_or_buf), cats)
 
 
 def inits_via_df(df: pd.DataFrame, cats: List[Any]) -> tf.Tensor:

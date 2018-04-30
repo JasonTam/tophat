@@ -1,32 +1,46 @@
 # Tophat
  
  Tophat is a factorization-based recommendation engine built using 
- [TensforFlow](https://www.tensorflow.org/).  
+ [TensorFlow](https://www.tensorflow.org/).  
  
- 
-## Running GILT Models
 
-### Getting Fixture Data
-The download scripts `bin/get_fixture_*.sh` can be used to sync some GILT 
-fixture data for local testing.
+## Installation
 
-### Fitting a Model
+Installing from PyPi:
+```bash
+pip install top-hat
 ```
-python jobs/fit_job.py [env]
+
+Installing the master branch from github in development mode, run:
+```bash
+git clone git@github.com:gilt/tophat.git
+cd tophat
+pip install -e .
 ```
-env can be {`local`, `integ`, `dev`, `prod`}
 
+Note that by default, installation assumes you already have TensorFlow installed. 
+However, if you need, you can include the installation of TensorFlow in the setup extras as following:
+(choose the one that's right for you)
+```bash
+# CPU pypi
+pip install top-hat[tf]
 
-### Scheduling on Sundial
+# GPU pypi
+pip install top-hat[tf_gpu]
 
-Production jobs can be scheduled to run using [Sundial](sundial)
+# CPU local dev
+pip install -e .[tf]
 
-
-## Tensorboard
-
-Tensorboard can be run for inspection (does not need to be within
-docker container as the log dir is shared by a Docker volume).
-
+# GPU local dev
+pip install -e .[tf_gpu]
 ```
-tensorboard --logdir=/tmp/tensorboard-logs
-```
+
+## Docker Images
+There are two provided Dockerfiles: `Dockerfile` and `Dockerfile.gpu`. The latter gpu variant requires [nvidia-docker](https://github.com/NVIDIA/nvidia-docker). 
+
+
+## Tests
+
+There are some minimal tests in `tests/` which can all be run using `pytest` or `python setup.py test`.
+
+

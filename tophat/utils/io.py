@@ -1,4 +1,3 @@
-import fastavro as avro
 from pathlib import Path
 from lib_cerebro_py.custom_io import *
 from typing import Dict, Union, List, Any, Optional
