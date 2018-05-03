@@ -44,3 +44,9 @@ There are two provided Dockerfiles: `Dockerfile` and `Dockerfile.gpu`. The latte
 There are some minimal tests in `tests/` which can all be run using `pytest` or `python setup.py test`.
 
 
+## Related Projects
+The initial motivation behind tophat was to port over [LightFM](https://github.com/lyst/lightfm) and [Spotlight](https://github.com/maciejkula/spotlight) into TensorFlow. 
+
+There also are many other [amazing recommender systems out there](https://github.com/grahamjenson/list_of_recommender_systems)
+ -- so choose the one that is right for your case.
+
