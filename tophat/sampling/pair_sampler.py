@@ -143,8 +143,7 @@ class PairSampler(object):
                  non_negs_df: Optional[pd.DataFrame] = None,
                  ):
 
-        self.seed = seed
-        np.random.seed(self.seed)
+        self.rand = np.random.RandomState(seed)
 
         user_col = cols_d[FGroup.USER]
         item_col = cols_d[FGroup.ITEM]
@@ -431,7 +430,7 @@ class PairSampler(object):
         #   if we want book-keeping state info to be kept
         for i in range(self.n_epochs):
             if self.shuffle:
-                np.random.shuffle(self.shuffle_inds)
+                self.rand.shuffle(self.shuffle_inds)
             # TODO: problem if less inds than batch_size
             inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)
             for inds_batch in inds_batcher:
@@ -471,7 +470,7 @@ class PairSampler(object):
         pos_xn_csr = self.pos_xn_coo.tocsr()
         for i in range(self.n_epochs):
             if self.shuffle:
-                np.random.shuffle(self.shuffle_inds)
+                self.rand.shuffle(self.shuffle_inds)
             # TODO: problem if less inds than batch_size
             inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)
             for inds_batch in inds_batcher:
@@ -482,7 +481,7 @@ class PairSampler(object):
                 for user_ind in user_inds_batch:
                     user_pos_item_inds = get_row_nz(pos_xn_csr, user_ind)
                     # `random.choice` slow
-                    user_pos_item = user_pos_item_inds[np.random.randint(
+                    user_pos_item = user_pos_item_inds[self.rand.randint(
                         len(user_pos_item_inds))]
                     pos_l.append(user_pos_item)
                 # Select random known pos for user

@@ -1,6 +1,9 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 
 import tophat.callbacks as cbks
 from tophat.data import FeatureSource, InteractionsSource
@@ -88,20 +91,32 @@ primary_task = FactorizationTaskWrapper(
 )
 
 primary_validator = Validator(
-    {'interactions_val': xn_test},
+    xn_test,
     parent_task_wrapper=primary_task,
-    **{
-        'limit_items': -1,
-        'n_users_eval': 200,
-        'include_cold': False,
-        'cold_only': False
-    },
+    limit_items=-1,
+    n_users_eval=200,
+    include_cold=False,
+    cold_only=False,
     name='userXmovie',
+)
+
+cold_validator = Validator(
+    xn_test,
+    parent_task_wrapper=primary_task,
+    limit_items=-1,
+    n_users_eval=200,
+    include_cold=True,
+    cold_only=True,
+    features_srcs=primary_group_features,
+    specific_feature=defaultdict(lambda: True),
+    name='userXcoldmovie',
 )
 
 
 if __name__ == '__main__':
-    LOG_DIR = '/tmp/tensorboard-logs/tophat-movielens'
+    ts = datetime.now().strftime('%Y%m%dT%H%M%S')
+    LOG_DIR = f'/tmp/tensorboard-logs/tophat-movielens/{ts}'
+    Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 
     model = TophatModel(tasks=[primary_task])
 
@@ -113,11 +128,15 @@ if __name__ == '__main__':
     val_cb = cbks.Scorer(primary_validator,
                          summary_writer=summary_cb.summary_writer,
                          freq=5,)
+    # cold_val_cb = cbks.Scorer(cold_validator,
+    #                           summary_writer=summary_cb.summary_writer,
+    #                           freq=5,)
     saver_cb = cbks.ModelSaver(LOG_DIR)
     callbacks = [
         summary_cb,
         emb_cb,
         val_cb,
+        # cold_val_cb,
         saver_cb,
     ]
 

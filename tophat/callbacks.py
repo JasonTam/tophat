@@ -110,10 +110,13 @@ class ModelSaver(Callback):
 
 
 class Scorer(Callback):
-    def __init__(self, validator, summary_writer, freq=1, sess=None):
+    def __init__(self, validator, summary_writer, freq=1, sess=None,
+                 macro=True):
         """
         Args:
             freq: frequency of validation (in epochs)
+            macro: Macro average across users, else, micro average across
+                interactions
         """
         super().__init__()
         self.sess = sess
@@ -121,6 +124,7 @@ class Scorer(Callback):
         self.validator = validator
         self.freq = freq
         self.score_hists = []
+        self.macro = macro
 
     def on_train_begin(self, logs=None):
         self.validator.make_ops()
@@ -129,7 +133,7 @@ class Scorer(Callback):
         if self.freq and ((epoch + 1) % self.freq) == 0:
             logger.info(f'Scoring ({self.validator.name}):')
             val_scores = self.validator.run_val(
-                self.sess, self.summary_writer, epoch)
+                self.sess, self.summary_writer, step=epoch, macro=self.macro)
             self.score_hists.append(val_scores)
 
     @property

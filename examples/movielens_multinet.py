@@ -113,7 +113,7 @@ genre_task = FactorizationTaskWrapper(
 )
 
 primary_validator = Validator(
-    {'interactions_val': xn_test},
+    xn_test,
     parent_task_wrapper=primary_task,
     **{
         'limit_items': -1,

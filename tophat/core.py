@@ -3,9 +3,8 @@ import numpy as np
 import itertools as it
 from tophat.tasks.wrapper import FactorizationTaskWrapper
 import tophat.callbacks as cbks
-from tophat.evaluation import items_pred_dicter
-from tophat.constants import FGroup
-from typing import Optional, List, Union, Dict, Sequence, Any
+from tophat.evaluation.transport import items_pred_dicter
+from typing import Optional, List, Sequence, Any
 
 
 class TophatModel(object):
@@ -115,10 +114,8 @@ class TophatModel(object):
         input_tensors = items_pred_dicter(
             user_id=user_id,
             item_ids=item_ids,
-            user_cat_codes_df=feat_codes_df[FGroup.USER],
-            item_cat_codes_df=feat_codes_df[FGroup.ITEM],
-            user_num_feats_df=num_feats_df[FGroup.USER],
-            item_num_feats_df=num_feats_df[FGroup.ITEM],
+            cat_codes_dfs=feat_codes_df,
+            num_feats_dfs=num_feats_df,
             input_fwd_d=input_fwd_d,
         )
 

@@ -89,6 +89,9 @@ class FeatureSource(object):
         return self
 
 
+FeatureSourceDictType = Dict[FGroup, Optional[Iterable[FeatureSource]]]
+
+
 def combine_cols(df: pd.DataFrame,
                  cols_seq: Sequence[Sequence[str]],
                  sep: str='__',
@@ -260,8 +263,7 @@ class TrainDataLoader(object):
 
     def __init__(self,
                  interactions_train: InteractionsSource,
-                 group_features:
-                    Dict[FGroup, Optional[Iterable[FeatureSource]]] = None,
+                 group_features: Optional[FeatureSourceDictType] = None,
                  specific_feature: Optional[Dict[FGroup, bool]] = None,
                  context_cols: Optional[Iterable[str]] = None,
                  batch_size: int=128,
@@ -413,8 +415,8 @@ def cast_cat(feats_d: Dict[FType, pd.DataFrame],
 
 def load_simple(
         interactions_src: InteractionsSource,
-        features_srcs: Dict[FGroup, Optional[Iterable[FeatureSource]]],
-        specific_feature: Dict[FGroup, bool]=True,
+        features_srcs: FeatureSourceDictType,
+        specific_feature: Dict[FGroup, bool],
         existing_cats_d: Optional[Dict[str, List[Any]]]=None,
         add_new_cats: Optional[bool] = False,
 ) -> Tuple[pd.DataFrame, Dict[FGroup, Dict[FType, pd.DataFrame]]]:
