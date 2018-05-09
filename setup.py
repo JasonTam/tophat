@@ -22,7 +22,7 @@ DESCRIPTION = 'Recommendation system in TensorFlow'
 URL = 'https://github.com/gilt/tophat'
 EMAIL = 'cerebro-dev@gilt.com (jtam@gilt.com)'
 AUTHOR = 'GILT-cerebro (Jason Tam)'
-REQUIRES_PYTHON = '>=3.6.2'
+REQUIRES_PYTHON = '>=3.6.0'
 LICENSE = 'MIT'  # NOTE: update classifiers if modified
 VERSION = '0.0.1'
 
