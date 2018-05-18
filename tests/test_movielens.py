@@ -13,6 +13,9 @@ from tophat.evaluation import Validator
 from tophat.datasets.movielens import fetch_movielens
 
 
+tf.reset_default_graph()
+
+
 @pytest.fixture
 def data():
     # Get movielens data via lightfm
