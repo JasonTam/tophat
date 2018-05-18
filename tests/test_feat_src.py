@@ -27,7 +27,7 @@ def test_feat_src():
         index_col='item_id',
         use_cols=['feat0', 'feat2', 'feat3'],
         concat_cols=[('feat2', 'feat3')],
-        drop=['feat2', 'feat3'],
+        drop_cols=['feat2', 'feat3'],
     )
     dim.load()
     assert dim.data.equals(feat_df2)
@@ -44,7 +44,7 @@ def test_feat_fn_src():
         index_col='item_id',
         use_cols=['feat0', 'feat2', 'feat3'],
         concat_cols=[('feat2', 'feat3')],
-        drop=['feat2', 'feat3'],
+        drop_cols=['feat2', 'feat3'],
     )
     dim.load()
     os.remove(f_tmp.name)

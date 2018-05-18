@@ -19,6 +19,8 @@ class FeatureSource(object):
         feature_type: Type of feature (ex. categorical, numerical)
         index_col: Name of the column to set as the index
         use_cols: Subset of columns to consider
+        concat_cols: list-like of list-like columns to concat together
+        drop_cols: list of columns to drop
         load_fn: function to load features from path
         load_kwargs: kwargs for `load_fn`
         name: Name of the data source
@@ -30,7 +32,7 @@ class FeatureSource(object):
                  index_col: Optional[str]=None,
                  use_cols: Optional[List[str]]=None,
                  concat_cols: Optional[List[Sequence[str]]]=None,
-                 drop: Optional[Union[Iterable[str], bool]]=True,
+                 drop_cols: Optional[Iterable[str]]=None,
                  load_fn: Optional[Callable[
                      [Union[str, pd.DataFrame]], pd.DataFrame]] = None,
                  load_kwargs: Optional[Dict] = None,
@@ -45,7 +47,7 @@ class FeatureSource(object):
         self.index_col = index_col
         self.use_cols = use_cols
         self.concat_cols = concat_cols
-        self.drop = drop
+        self.drop_cols = drop_cols
 
         self.data = None
 
@@ -83,8 +85,10 @@ class FeatureSource(object):
 
         if self.concat_cols is not None:
             self.data = combine_cols(df=self.data,
-                                     cols_seq=self.concat_cols,
-                                     drop=self.drop)
+                                     cols_seq=self.concat_cols)
+
+        if self.drop_cols:
+            self.data.drop(list(set(self.drop_cols)), axis=1, inplace=True)
 
         return self
 
@@ -94,8 +98,7 @@ FeatureSourceDictType = Dict[FGroup, Optional[Iterable[FeatureSource]]]
 
 def combine_cols(df: pd.DataFrame,
                  cols_seq: Sequence[Sequence[str]],
-                 sep: str='__',
-                 drop: Optional[Union[Iterable[str], bool]]=True):
+                 sep: str='__'):
     """Concatenates columns (will output str dtypes)
     
     Args:
@@ -103,8 +106,6 @@ def combine_cols(df: pd.DataFrame,
         cols_seq: list-like of list-like columns to concat together
         sep: string separator
             Note: careful - tensorflow needs `[A-Za-z0-9_.\\-/]*` for scope
-        drop: if True, drop the columns after concatenating
-            if a sequence of columns is provided, those columns will be dropped
 
     Returns:
         df: df with concatenated columns
@@ -114,14 +115,7 @@ def combine_cols(df: pd.DataFrame,
     for cols in cols_seq:
         new_col_name = sep.join(cols)
         df[new_col_name] = df[cols[0]].astype(str).str.cat(
-            [df[col] for col in cols[1:]], sep=sep)
-
-    if drop:
-        if isinstance(drop, Iterable):
-            drop_cols = list(set(drop))
-        else:
-            drop_cols = list(set(it.chain(*cols_seq)))
-        df.drop(drop_cols, axis=1, inplace=True)
+            [df[col].astype(str) for col in cols[1:]], sep=sep)
 
     return df
 
