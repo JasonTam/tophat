@@ -83,12 +83,12 @@ class FeatureSource(object):
                 # Use entire dataframe
                 self.data = feat_df
 
-        if self.concat_cols is not None:
-            self.data = combine_cols(df=self.data,
-                                     cols_seq=self.concat_cols)
+            if self.concat_cols is not None:
+                self.data = combine_cols(df=self.data,
+                                         cols_seq=self.concat_cols)
 
-        if self.drop_cols:
-            self.data.drop(list(set(self.drop_cols)), axis=1, inplace=True)
+            if self.drop_cols:
+                self.data.drop(list(set(self.drop_cols)), axis=1, inplace=True)
 
         return self
 
