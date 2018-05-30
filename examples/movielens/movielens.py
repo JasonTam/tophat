@@ -1,7 +1,9 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
-import os
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 
 import tophat.callbacks as cbks
 from tophat.data import FeatureSource, InteractionsSource
@@ -10,7 +12,7 @@ from tophat.tasks.wrapper import FactorizationTaskWrapper
 from tophat.core import TophatModel
 from tophat.evaluation import Validator
 
-from lightfm.datasets.movielens import fetch_movielens
+from tophat.datasets.movielens import fetch_movielens  # ref: lightfm
 
 SEED = 322
 
@@ -50,16 +52,6 @@ xn_test = InteractionsSource(
     item_col='item_id',
 )
 
-# Synthetic Genre Favorites Interactions
-xn_genre_favs = InteractionsSource(
-    path=os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                      '../data/movielens', 'genre_favs_synthetic.msg'),
-    user_col='user_id',
-    item_col='genre_id',
-    load_fn=pd.read_msgpack,
-)
-
-
 # #################### [ FEATURES ] ####################
 
 genre_df = pd.DataFrame(np.vstack(data['item_features'].nonzero()).T,
@@ -87,7 +79,7 @@ EMB_DIM = 30
 
 primary_task = FactorizationTaskWrapper(
     loss_fn='bpr',
-    sample_method='uniform',
+    sample_method='uniform_verified',
     interactions=xn_train,
     group_features=primary_group_features,
     embedding_map_kwargs={
@@ -95,40 +87,38 @@ primary_task = FactorizationTaskWrapper(
     },
     batch_size=128,
     optimizer=opt,
-    add_new_cats=True,
-    build_on_init=False,
     name='primary',
-)
-
-genre_task = FactorizationTaskWrapper(
-    loss_fn='bpr',
-    sample_method='uniform_verified',
-    interactions=xn_genre_favs,
-    parent_task_wrapper=primary_task,
-    batch_size=128,
-    optimizer=opt,
-    add_new_cats=True,
-    build_on_init=False,
-    name='genre',
 )
 
 primary_validator = Validator(
     xn_test,
     parent_task_wrapper=primary_task,
-    **{
-        'limit_items': -1,
-        'n_users_eval': 200,
-        'include_cold': False,
-        'cold_only': False
-    },
+    limit_items=-1,
+    n_users_eval=200,
+    include_cold=False,
+    cold_only=False,
     name='userXmovie',
+)
+
+cold_validator = Validator(
+    xn_test,
+    parent_task_wrapper=primary_task,
+    limit_items=-1,
+    n_users_eval=200,
+    include_cold=True,
+    cold_only=True,
+    features_srcs=primary_group_features,
+    specific_feature=defaultdict(lambda: True),
+    name='userXcoldmovie',
 )
 
 
 if __name__ == '__main__':
-    LOG_DIR = '/tmp/tensorboard-logs/tophat-movielens'
+    ts = datetime.now().strftime('%Y%m%dT%H%M%S')
+    LOG_DIR = f'/tmp/tensorboard-logs/tophat-movielens/{ts}'
+    Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 
-    model = TophatModel(tasks=[primary_task, genre_task])
+    model = TophatModel(tasks=[primary_task])
 
     summary_cb = cbks.Summary(log_dir=LOG_DIR)
     emb_cb = cbks.Projector(log_dir=LOG_DIR,
@@ -138,13 +128,17 @@ if __name__ == '__main__':
     val_cb = cbks.Scorer(primary_validator,
                          summary_writer=summary_cb.summary_writer,
                          freq=5,)
+    # cold_val_cb = cbks.Scorer(cold_validator,
+    #                           summary_writer=summary_cb.summary_writer,
+    #                           freq=5,)
     saver_cb = cbks.ModelSaver(LOG_DIR)
     callbacks = [
         summary_cb,
         emb_cb,
         val_cb,
+        # cold_val_cb,
         saver_cb,
     ]
 
-    model.fit(10, callbacks=callbacks, verbose=3)
+    model.fit(10, callbacks=callbacks, verbose=2)
 
