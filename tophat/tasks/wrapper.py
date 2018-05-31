@@ -26,13 +26,14 @@ class FactorizationTaskWrapper(object):
             specific_feature: Optional[Dict[FGroup, bool]] = None,
             nonnegs: Optional[XN_SRC] = None,
             context_cols: Optional[List[str]] = None,
-            parent_task_wrapper: Optional['FactorizationTaskWrapper']=None,
+            parent_task_wrapper: Optional['FactorizationTaskWrapper'] = None,
             embedding_map_kwargs: Optional = None,
             batch_size: Optional[int] = None,
             sample_prefetch: Optional[int] = 10,
             optimizer: Optional[tf.train.Optimizer] =
             tf.train.AdamOptimizer(learning_rate=0.001),
             build_on_init: Optional[bool] = True,
+            existing_cats: Optional[Dict[str, List[Any]]] = None,
             add_new_cats: Optional[bool] = False,
             seed: Optional[int] = 322,
             name: Optional[str] = None,
@@ -58,6 +59,9 @@ class FactorizationTaskWrapper(object):
                 `tf.data.Dataset.prefetch` transformation
             optimizer: graph optimizer to use
             build_on_init: flag to build the graph on object init
+            existing_cats: existing categories to re-use.
+                The categories from `parent_task_wrapper` take precedence over
+                this argument.
             add_new_cats: flag to append newly seen categories
                 (if existing categories are already provided)
             seed: random seed
@@ -75,8 +79,12 @@ class FactorizationTaskWrapper(object):
 
         self.parent_task_wrapper = parent_task_wrapper
 
-        existing_cats_d = parent_task_wrapper.data_loader.cats_d \
-            if parent_task_wrapper else None
+        if parent_task_wrapper:
+            existing_cats_d = parent_task_wrapper.data_loader.cats_d
+        elif existing_cats:
+            existing_cats_d = existing_cats
+        else:
+            existing_cats_d = None
 
         self.data_loader = TrainDataLoader(
             interactions_train=interactions,

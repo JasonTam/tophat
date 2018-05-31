@@ -4,11 +4,13 @@ import numpy as np
 import pandas as pd
 import tempfile
 import tophat.callbacks as cbks
+from pathlib import Path
 from tophat.data import FeatureSource, InteractionsSource
 from tophat.constants import FType, FGroup
 from tophat.tasks.wrapper import FactorizationTaskWrapper
 from tophat.core import TophatModel
 from tophat.evaluation import Validator
+from tophat.utils.io import load_vocab
 
 from tophat.datasets.movielens import fetch_movielens
 
@@ -20,7 +22,10 @@ def data():
     movielens = fetch_movielens(
         indicator_features=False,
         genre_features=True,
-        min_rating=5.0,  # Pretend 5-star is an implicit 'like'
+        # This will include more ratings than the checkpoint that we will load
+        # (checkpoint was trained on `min_rating=5.0`
+        # so this test needs to handle newly seen users & items as well
+        min_rating=4.0,
         download_if_missing=True,
     )
 
@@ -73,6 +78,19 @@ def data():
         FGroup.ITEM: [genre_feats],
     }
 
+    # #################### [ LOAD PRETRAINED EMBS ] ####################
+    ckpt_path = str(Path(__file__).parent / 'data/movielens/model.ckpt')
+
+    vocab_d = {}
+    for feat_name in ['user_id', 'item_id']:
+        for scope in ['embeddings', 'biases']:
+            tensor_name = f'{scope}/{feat_name}'
+            vocab_file = str(
+                Path(__file__).parent / f'data/movielens/{feat_name}.vocab')
+            vocab_d[tensor_name] = vocab_file
+
+    existing_cats = load_vocab('tests/data/movielens/')
+
     # #################### [ TASKS ] ####################
     opt = tf.train.AdamOptimizer(learning_rate=0.001)
     EMB_DIM = 30
@@ -84,7 +102,11 @@ def data():
         group_features=primary_group_features,
         embedding_map_kwargs={
             'embedding_dim': EMB_DIM,
+            'init_emb_via_vocab': vocab_d,
+            'path_checkpoint': ckpt_path,
         },
+        existing_cats=existing_cats,
+        add_new_cats=True,
         batch_size=128,
         optimizer=opt,
         name='primary',
@@ -105,38 +127,24 @@ def data():
     return primary_task, primary_validator
 
 
-def test_movielens_basic(data):
+def test_movielens_loaded(data):
     """
-    Make sure the minimal movielens example works
-    Warning: takes > 10s on modern machines
+    Make sure we can load from checkpoint on evolving vocabulary
+    Warning: takes > 5s on modern machines
     """
     with tempfile.TemporaryDirectory() as log_dir:
 
         primary_task, primary_validator = data
 
-        model = TophatModel(tasks=[primary_task])
-
         summary_cb = cbks.Summary(log_dir=log_dir)
 
-        val_cb = cbks.Scorer(primary_validator,
-                             summary_writer=summary_cb.summary_writer,
-                             freq=5,)
-        callbacks = [
-            summary_cb,
-            val_cb,
-        ]
+        model = TophatModel(tasks=[primary_task])
+        model.sess_init()
+        score_d = primary_validator.run_val(
+            model.sess, summary_cb.summary_writer, step=0, macro=False)
 
-        model.fit(10, callbacks=callbacks, verbose=False)
-
-    # Training loss should be decreasing between epochs
-    assert (np.diff(model.loss_hists[0].epoch_losses) < 0).all()
-
-    # Validation scores at last epoch should not be garbage
-    assert val_cb.score_df.iloc[-1]['auc'] > 0.84
-    assert val_cb.score_df.iloc[-1]['mapk'] > 0.03
-
-    # Predictions API should work and make sense
-    user0_pos_scores = model.predict(0, [170, 201])  # pos from test set
-    user0_neg_scores = model.predict(0, [1, 2, 3, 4])  # unseen (full set)
-    assert user0_pos_scores.mean() > user0_neg_scores.mean()
+    # Scores should be better than random since we loaded lots of info
+    # Original validation was ~0.84, we expect something worse since we
+    # added some cold-start and did not train any additional epochs
+    assert score_d['auc'] > 0.75
 

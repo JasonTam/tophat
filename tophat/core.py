@@ -1,10 +1,13 @@
 import tensorflow as tf
 import numpy as np
 import itertools as it
+import pickle
+from pathlib import Path
 from tophat.tasks.wrapper import FactorizationTaskWrapper
 import tophat.callbacks as cbks
 from tophat.evaluation.transport import items_pred_dicter
-from typing import Optional, List, Sequence, Any
+from tophat.utils.io import write_vocab
+from typing import Optional, List, Sequence, Any, Union
 
 
 class TophatModel(object):
@@ -124,3 +127,9 @@ class TophatModel(object):
         preds_arr = self.sess.run(preds_op, feed_dict=input_tensors)
 
         return preds_arr
+
+    def write_vocab(self, dir_export: Union[str, Path]):
+        write_vocab(dir_export, self.embedding_map.cats_d)
+
+    def write_cats(self, path_export):
+        pickle.dump(self.embedding_map.cats_d, open(path_export, 'wb'))

@@ -1,14 +1,18 @@
 import itertools as it
 
+import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from tensorflow.contrib.framework import load_embedding_initializer
 from collections import defaultdict
 from tensorflow.contrib.tensorboard.plugins import projector
 from typing import Iterable, Dict, Tuple, Optional, List, Any, Union
+from tempfile import TemporaryDirectory
 
 from tophat.constants import FGroup
 from tophat.utils.metadata_proc import write_metadata_emb
+from tophat.utils.io import write_vocab
 
 
 class EmbeddingMap(object):
@@ -24,6 +28,8 @@ class EmbeddingMap(object):
                  feature_weights_d: Optional[Dict[str, float]] = None,
                  vis_emb_user_col: Optional[str] = None,
                  init_emb_d: Optional[Dict[str, tf.Tensor]] = None,
+                 init_emb_via_vocab: Optional[Dict[str, str]] = None,
+                 path_checkpoint: Optional[str] = None,
                  ):
         """Convenience container for embedding layers
         
@@ -62,6 +68,15 @@ class EmbeddingMap(object):
                 (Warning: this does not load in any saved gradients or whatever
                 weights are used by the optimizer -- so it's only halfway to
                 actually resuming a model)
+            init_emb_via_vocab: dictionary keyed by tensor_names
+                (including scope) with values of paths to existing vocab files.
+                `path_checkpoint` must be provided. Also, `init_emb_d`
+                takes precedence over initializations from this argument.
+                Note: this will require writing vocab files for the new vocab
+                so temporary storage will be used. Also vocabs must match
+                when serialized as str type.
+            path_checkpoint: path of checkpoint (V2) to load from
+                (use in conjunction with `init_emb_via_vocab`)
                 
         """
 
@@ -90,23 +105,47 @@ class EmbeddingMap(object):
         else:
             self.feature_weights_d = feature_weights_d
 
+        self.tmp_dir = TemporaryDirectory()
+
+        # TODO: lots of repeated code coming up
         with tf.variable_scope('embeddings'):
             self.embeddings_d = {}
 
             for feat_name, cats in self.cats_d.items():
+                tensor_name = f'embeddings/{feat_name}'
                 if init_emb_d is not None and feat_name in init_emb_d:
                     # Initialize from passed-in weights
                     emb_init = init_emb_d[feat_name]
                     assert emb_init.shape == [len(cats), embedding_dim]
                     shape = None
+                elif init_emb_via_vocab is not None and \
+                        tensor_name in init_emb_via_vocab:
+                    # Initialize from vocab file
+                    path_vocab = init_emb_via_vocab[tensor_name]
+                    write_vocab(self.tmp_dir.name,
+                                {feat_name: self.cats_d[feat_name]})
+
+                    emb_init = load_embedding_initializer(
+                        path_checkpoint,
+                        tensor_name,
+                        new_vocab_size=len(cats),
+                        embedding_dim=embedding_dim,
+                        old_vocab_file=path_vocab,
+                        new_vocab_file=os.path.join(self.tmp_dir.name,
+                                                    f'{feat_name}.vocab'),
+                        initializer=tf.truncated_normal_initializer(
+                            mean=0., stddev=1. / self.embedding_dim,
+                            seed=self.seed)
+                    )
+                    shape = [len(cats), embedding_dim]
                 else:
                     # Nothing to load, just rand initialization
-                    emb_init = tf.random_normal_initializer(
+                    emb_init = tf.truncated_normal_initializer(
                         mean=0., stddev=1. / self.embedding_dim,
                         seed=self.seed)
                     shape = [len(cats), embedding_dim]
                 self.embeddings_d[feat_name] = tf.get_variable(
-                    name=f'{feat_name}_embs',
+                    name=feat_name,
                     shape=shape,
                     initializer=emb_init,
                     regularizer=self.reg_emb
@@ -120,15 +159,39 @@ class EmbeddingMap(object):
                 self.embeddings_d[k] *= tf.constant(z)
 
         with tf.variable_scope('biases'):
-            self.biases_d = {
-                feat_name: tf.get_variable(
-                    name=f'{feat_name}_biases',
-                    shape=[len(cats)],
-                    initializer=tf.zeros_initializer(),
-                    regularizer=self.reg_bias
-                )
-                for feat_name, cats in self.cats_d.items()
-            }
+            self.biases_d = {}
+
+            for feat_name, cats in self.cats_d.items():
+                tensor_name = f'biases/{feat_name}'
+
+                if init_emb_via_vocab is not None and \
+                        tensor_name in init_emb_via_vocab:
+                    # Initialize from vocab file
+                    path_vocab = init_emb_via_vocab[tensor_name]
+
+                    # Old vocab should already be written by embeddings loop
+                    # write_vocab(self.tmp_dir.name,
+                    #             {feat_name: self.cats_d[feat_name]})
+
+                    b_init = load_embedding_initializer(
+                        path_checkpoint,
+                        tensor_name,
+                        new_vocab_size=len(cats),
+                        embedding_dim=1,
+                        old_vocab_file=path_vocab,
+                        new_vocab_file=os.path.join(self.tmp_dir.name,
+                                                    f'{feat_name}.vocab'),
+                        initializer=tf.zeros_initializer(),
+                    )
+                else:
+                    b_init = tf.zeros_initializer()
+
+                self.biases_d[feat_name] = tf.get_variable(
+                        name=feat_name,
+                        shape=[len(cats), 1],
+                        initializer=b_init,
+                        regularizer=self.reg_bias
+                    )
 
         # TODO: numerical specific factors for user (theta_u)
         self.vis_emb_user_col = vis_emb_user_col
@@ -169,11 +232,12 @@ class EmbeddingMap(object):
                 feature_weights_d=self.feature_weights_d,
             )
 
-        biases = lookup_wrapper(
+        # Pre-squeeze biases from shape `[len(cats), 1]` to `[len(cats)]`
+        biases = {k: tf.squeeze(v) for k, v in lookup_wrapper(
             self.biases_d, input_xn_d, it.chain(*cat_cols.values()),
             'bias_lookup', name_tmp='{}_bias',
             feature_weights_d=self.feature_weights_d,
-        )
+        ).items()}
 
         return emb_lookup_d, biases
 

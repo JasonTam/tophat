@@ -1,0 +1,2 @@
+model_checkpoint_path: "tests/data/movielens/model.ckpt"
+all_model_checkpoint_paths: "tests/data/movielens/model.ckpt"

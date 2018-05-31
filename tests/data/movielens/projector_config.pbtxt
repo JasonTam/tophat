@@ -1,0 +1,12 @@
+embeddings {
+  tensor_name: "embeddings/user_id:0"
+  metadata_path: "/tmp/tensorboard-logs/tophat-movielens/20180530T162700/metadata-user_id.tsv"
+}
+embeddings {
+  tensor_name: "embeddings/genre_id:0"
+  metadata_path: "/tmp/tensorboard-logs/tophat-movielens/20180530T162700/metadata-genre_id.tsv"
+}
+embeddings {
+  tensor_name: "embeddings/item_id:0"
+  metadata_path: "/tmp/tensorboard-logs/tophat-movielens/20180530T162700/metadata-item_id.tsv"
+}

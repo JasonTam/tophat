@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
 import itertools as it
@@ -376,7 +377,7 @@ class TrainDataLoader(object):
 
 
 def cast_cat(feats_d: Dict[FType, pd.DataFrame],
-             existing_cats_d: Optional[Dict[str, Sized]] = None,
+             existing_cats_d: Optional[Dict[str, Iterable]] = None,
              add_new_cats: Optional[bool] = False,
              ) -> Dict[FType, pd.DataFrame]:
     """Casts feature columns to categorical
@@ -384,7 +385,9 @@ def cast_cat(feats_d: Dict[FType, pd.DataFrame],
 
     Args:
         feats_d: Dictionary of feature dataframes
-        existing_cats_d: Optional dictionary of existing categories
+        existing_cats_d: Optional dictionary of existing categories.
+            Note: these existing categories will be casted to the dtype of
+            the column being casted.
         add_new_cats: if `True`, will append newly seen categories to
             book-keeping dictionary of categories (mutates inplace)
 
@@ -394,7 +397,11 @@ def cast_cat(feats_d: Dict[FType, pd.DataFrame],
 
     for col in feats_d[FType.CAT].columns:
         if existing_cats_d and col in existing_cats_d:
-            # todo: shouldnt we be adding the new cats?
+            # Cast existing category to proper dtype (in-place)
+            col_dtype = feats_d[FType.CAT][col].dtype
+            existing_cats_d.update(
+                {col: list(np.array(existing_cats_d[col]).astype(col_dtype))}
+            )
             if add_new_cats:
                 existing_cats_d[col] += list(
                     set(feats_d[FType.CAT][col].unique()) -
