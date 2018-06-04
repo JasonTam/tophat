@@ -22,7 +22,7 @@ EMB_DIM = 30
 data = fetch_movielens(
     indicator_features=False,
     genre_features=True,
-    min_rating=5.0,  # Pretend 5-star is an implicit 'like'
+    min_rating=4.0,  # Pretend 5-star is an implicit 'like'
     download_if_missing=True,
 )
 
@@ -80,7 +80,9 @@ primary_group_features = {
 ckpt_path = 'tests/data/movielens/model.ckpt'
 
 vocab_d = {}
-for feat_name in ['user_id', 'item_id']:
+# Columns to load embeddings for
+transfer_cols = ['user_id', 'item_id']
+for feat_name in transfer_cols:
     for scope in ['embeddings', 'biases']:
         tensor_name = f'{scope}/{feat_name}'
         vocab_file = f'tests/data/movielens/{feat_name}.vocab'

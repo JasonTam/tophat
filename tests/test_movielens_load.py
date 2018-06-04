@@ -82,7 +82,9 @@ def data():
     ckpt_path = str(Path(__file__).parent / 'data/movielens/model.ckpt')
 
     vocab_d = {}
-    for feat_name in ['user_id', 'item_id']:
+    # Columns to load embeddings for
+    transfer_cols = ['user_id', 'item_id']
+    for feat_name in transfer_cols:
         for scope in ['embeddings', 'biases']:
             tensor_name = f'{scope}/{feat_name}'
             vocab_file = str(
