@@ -1,4 +1,6 @@
 # Tophat
+
+[![Build Status](https://travis-ci.org/saksdirect/tophat.svg?branch=master)](https://travis-ci.org/saksdirect/tophat)
  
  Tophat is a factorization-based recommendation engine built using 
  [TensorFlow](https://www.tensorflow.org/).  
