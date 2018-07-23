@@ -24,7 +24,7 @@ EMAIL = 'cerebro-dev@gilt.com (jtam@gilt.com)'
 AUTHOR = 'GILT-cerebro (Jason Tam)'
 REQUIRES_PYTHON = '>=3.6.0'
 LICENSE = 'MIT'  # NOTE: update classifiers if modified
-VERSION = '0.0.1'
+VERSION = '0.0.2'
 
 # What packages are required for this module to be executed?
 EXTRAS_REQUIRES = {
