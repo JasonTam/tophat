@@ -28,8 +28,8 @@ VERSION = '0.0.1'
 
 # What packages are required for this module to be executed?
 EXTRAS_REQUIRES = {
-    'tf': ['tensorflow>=1.6.0'],
-    'tf_gpu': ['tensorflow-gpu>=1.6.0'],
+    'tf': ['tensorflow>=1.9.0'],
+    'tf_gpu': ['tensorflow-gpu>=1.9.0'],
 }
 
 INSTALL_REQUIRES = [

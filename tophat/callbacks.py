@@ -6,7 +6,7 @@ References:
 """
 import pandas as pd
 import tensorflow as tf
-from tensorflow.python.keras._impl.keras.callbacks import *
+from tensorflow.python.keras.callbacks import *
 from tophat.utils.log import logger
 from tophat.embedding import EmbeddingProjector
 
