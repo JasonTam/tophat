@@ -303,6 +303,7 @@ class Validator(object):
         sess.run(tf.local_variables_initializer())
         sess.run(self.input_iter.initializer)
         sess.run(self.reset_metrics_op)
+        metric_vals = [np.nan] * len(self.metric_ops_d)  # will overwrite
         for _ in tqdm(range(n_users_eval)):
 
             # Run updates
