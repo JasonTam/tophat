@@ -126,7 +126,7 @@ class PairSampler(object):
     """
     def __init__(self,
                  interactions_df: pd.DataFrame,
-                 cols_d: Dict[FGroup, str],
+                 cols_d: Dict[Union[FGroup, str], str],
                  cats_d: Dict[str, List],
                  feat_codes_df_d: Dict[FGroup, pd.DataFrame],
                  feats_d_d: Dict[FGroup, Dict[FType, pd.DataFrame]],
@@ -147,6 +147,8 @@ class PairSampler(object):
 
         user_col = cols_d[FGroup.USER]
         item_col = cols_d[FGroup.ITEM]
+        activity_col = cols_d['activity']
+        count_col = cols_d['count']
 
         # Index alignment
         feats_codes_dfs = {
@@ -220,13 +222,13 @@ class PairSampler(object):
 
             # Pseudo-ratings for non-neg
             if ('ordinal' in self.method and
-               'activity' in interactions_df.columns):
+                    activity_col in interactions_df.columns):
                 non_negs_pr_df = calc_pseudo_ratings(
                     interactions_df=non_negs_df,
                     user_col=user_col,
                     item_col=item_col,
-                    counts_col='counts',
-                    weight_switch_col='activity',
+                    counts_col=count_col,
+                    weight_switch_col=activity_col,
                     sublinear=True,
                     reagg_counts=False,
                     output_col='pseudo_rating',

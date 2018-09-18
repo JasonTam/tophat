@@ -40,6 +40,8 @@ def data(request):
     cols_d = {
         FGroup.USER: 'user_id',
         FGroup.ITEM: 'item_id',
+        'activity': 'activity',
+        'count': 'count',
     }
 
     # For the sake of testing convenience,

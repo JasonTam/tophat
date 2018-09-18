@@ -272,6 +272,8 @@ class TrainDataLoader(object):
         self.cols = {
             FGroup.USER: interactions_train.user_col,
             FGroup.ITEM: interactions_train.item_col,
+            'activity': interactions_train.activity_col,
+            'count': interactions_train.count_col,
         }
         group_features = group_features or {
             FGroup.USER: [],
