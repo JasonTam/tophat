@@ -64,12 +64,13 @@ class FactorizationTask(BaseTask):
             it.chain(*self.net.cat_cols.values()),
             batch_size)
 
-    def get_pair_dict(self, batch_size: int = None):
+    def get_pair_dict(self, batch_size: int = None, extra_dim: bool = False):
         """Gets the placeholders required for the forward prediction of a
         pair of interactions
 
         Args:
             batch_size: Optional batch_size if known before-hand
+            extra_dim: Optional extra dimension if each observation contains many samples to be aggregated
 
         Returns:
             Dictionary of placeholders
@@ -92,7 +93,9 @@ class FactorizationTask(BaseTask):
                 FType.CAT: self.net.cat_cols[FGroup.CONTEXT],
                 # FType.NUM: [],
             },
-            batch_size=batch_size)
+            batch_size=batch_size,
+            extra_dim=extra_dim,
+        )
 
     def get_loss(self) -> tf.Tensor:
         """Calculates the pair-loss between a positive and negative interaction

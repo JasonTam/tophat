@@ -163,6 +163,13 @@ class FactorizationTaskWrapper(object):
                 tf.placeholder(tf.int32, shape=[self.batch_size],
                                name=f'{MISC_TAG}.first_violator_inds_input')
 
+        # Tiling task placeholders with number of negative samples
+        with tf.name_scope('placeholders/'):  # Re-use the name scope
+            for k, v in self.task.input_pair_d.items():
+                if k.startswith(NEG_VAR_TAG):
+                    self.task.input_pair_d[k] = tf.tile(
+                        tf.expand_dims(v, 0), [self.sampler.n_neg, 1])
+
         self.dataset = tf.data.Dataset.from_generator(
             self.sampler.__iter__,
             {k: v.dtype for k, v in self.task.input_pair_d.items()},

@@ -98,7 +98,7 @@ def data(request):
 def get_inds(sampled_batch, i):
     user_ind = sampled_batch['user.user_feat0_code'][i]
     pos_item_ind = sampled_batch['pos.item_feat0_code'][i]
-    neg_item_ind = sampled_batch['neg.item_feat0_code'][i]
+    neg_item_ind = sampled_batch['neg.item_feat0_code'].T[i]
     return user_ind, pos_item_ind, neg_item_ind
 
 
@@ -158,7 +158,7 @@ def test_neg(data):
         for i in range(sampler.batch_size):
             user_ind, pos_item_ind, neg_item_ind = get_inds(sampled_batch, i)
             user_id = cats_d['user_id'][user_ind]
-            neg_item_id = cats_d['item_id'][neg_item_ind]
+            neg_item_id = np.array(cats_d['item_id'])[neg_item_ind]
             user_xn = interactions_df.loc[interactions_df['user_id'] == user_id]
 
-            assert neg_item_id not in user_xn['item_id'].values
+            assert not set(neg_item_id).intersection(user_xn['item_id'].values)

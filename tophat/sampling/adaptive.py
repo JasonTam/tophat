@@ -2,27 +2,7 @@ import numpy as np
 import scipy.sparse as sp
 from typing import Sequence, Callable
 from tophat.utils.sparse_utils import get_row_nz_data
-
-
-def neg_samp(pos_inds: np.array, n_items: int, n_samp: int = 32):
-    """Samples negatives given an ordered array of positive indices to exclude
-    from sampling
-    
-    Args:
-        pos_inds: index of positive items to exclude from sampling
-            Note: These indices must be ordered!
-            As this method uses binary search
-        n_items: total number of items in catalog
-        n_samp: number of random samples to produce
-
-    Returns:
-        neg_inds: index of sampled negative items
-        
-    """
-    raw_samp = np.random.randint(0, n_items - len(pos_inds), size=n_samp)
-    pos_inds_adj = pos_inds - np.arange(len(pos_inds))
-    neg_inds = raw_samp + np.searchsorted(pos_inds_adj, raw_samp, side='right')
-    return neg_inds
+from tophat.sampling.utils import neg_samp_bsearch
 
 
 def sample_adaptive(
@@ -97,7 +77,7 @@ def sample_adaptive(
             # Filter interactions of same or higher tier than current positive
             user_pos_item_inds = user_pos_item_inds[
                 user_pos_item_vals >= cur_pos_item_val]
-            user_neg_item_inds = neg_samp(
+            user_neg_item_inds = neg_samp_bsearch(
                 user_pos_item_inds, n_items, max_sampled)
 
             neg_item_inds[i, :] = user_neg_item_inds

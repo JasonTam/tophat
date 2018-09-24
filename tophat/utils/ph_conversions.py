@@ -54,8 +54,8 @@ def pair_dict_via_cols(user_cat_cols: Iterable[str],
 
 def ph_dict_via_feats(feat_names: List[str],
                       dtype: Union[str, type],
-                      batch_size: int=None,
-                      input_size: int=1,
+                      batch_size: int = None,
+                      input_size: Optional[int] = None,
                       tag: str=None,
                       ) -> Dict[str, tf.Tensor]:
     """Creates placeholders based on desired features
@@ -75,7 +75,7 @@ def ph_dict_via_feats(feat_names: List[str],
     if not feat_names:
         return {}
 
-    if input_size > 1:
+    if input_size:
         ph_shape = [batch_size, input_size]
     else:
         ph_shape = [batch_size]
@@ -95,13 +95,15 @@ def ph_dict_via_feats(feat_names: List[str],
 
 
 def ph_via_ftypemeta(ftypemeta: FtypeMeta,
-                     batch_size: int=None,
+                     batch_size: int = None,
+                     extra_dim: bool = False,
                      tag: str=None) -> Dict[str, tf.Tensor]:
     """Creates placeholders based on feature type metadata 
     
     Args:
         ftypemeta: Feature type metadata
         batch_size: Optional batch size
+        extra_dim: Optional extra dimension if each observation contains many samples to be aggregated
         tag: Prefix tag for the placeholder
             (ex. "user", "neg")
 
@@ -111,6 +113,7 @@ def ph_via_ftypemeta(ftypemeta: FtypeMeta,
     cat_d = ph_dict_via_feats(ftypemeta[FType.CAT],
                               dtype=tf.int32,
                               batch_size=batch_size,
+                              input_size=1 if extra_dim else None,
                               tag=tag)
     if FType.NUM in ftypemeta:
         num_ph_l = [
@@ -130,7 +133,9 @@ def pair_dict_via_ftypemeta(
         user_ftypemeta: FtypeMeta,
         item_ftypemeta: FtypeMeta,
         context_ftypemeta: FtypeMeta,
-        batch_size: int=None) -> Dict[str, tf.Tensor]:
+        batch_size: int = None,
+        extra_dim: bool = False,
+) -> Dict[str, tf.Tensor]:
     """Creates placeholders based on feature type metadata
     for a pair of interactions
     
@@ -139,15 +144,16 @@ def pair_dict_via_ftypemeta(
         item_ftypemeta: Item feature type metadata
         context_ftypemeta: Context feature type metadata
         batch_size: Optional batch size
+        extra_dim: Optional extra dimension if each observation contains many samples to be aggregated
 
     Returns:
         Dictionary of placeholders
     """
     input_pair_d = {
-        **ph_via_ftypemeta(user_ftypemeta, batch_size, tag=USER_VAR_TAG),
-        **ph_via_ftypemeta(item_ftypemeta, batch_size, tag=POS_VAR_TAG),
-        **ph_via_ftypemeta(item_ftypemeta, batch_size, tag=NEG_VAR_TAG),
-        **ph_via_ftypemeta(context_ftypemeta, batch_size, tag=CONTEXT_VAR_TAG),
+        **ph_via_ftypemeta(user_ftypemeta, batch_size, extra_dim, tag=USER_VAR_TAG),
+        **ph_via_ftypemeta(item_ftypemeta, batch_size, extra_dim, tag=POS_VAR_TAG),
+        **ph_via_ftypemeta(item_ftypemeta, batch_size, extra_dim, tag=NEG_VAR_TAG),
+        **ph_via_ftypemeta(context_ftypemeta, batch_size, extra_dim, tag=CONTEXT_VAR_TAG),
     }
     return input_pair_d
 

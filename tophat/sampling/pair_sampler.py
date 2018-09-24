@@ -115,6 +115,7 @@ class PairSampler(object):
         seed: Seed for random state
         non_negs_df: Additional interactions that are safeguarded from being
             sampled as negatives. But they will not be chosen as positives.
+        n_neg: number of negatives to sample per positive
 
     Terminology:
 
@@ -141,6 +142,7 @@ class PairSampler(object):
                  use_ds_iter: bool = True,
                  seed: int = 0,
                  non_negs_df: Optional[pd.DataFrame] = None,
+                 n_neg: int = 1,
                  ):
 
         self.rand = np.random.RandomState(seed)
@@ -279,6 +281,8 @@ class PairSampler(object):
             self.fwd_dict = self._model.get_fwd_dict(batch_size=None)
             self.fwd_op = self._model.forward(self.fwd_dict)
 
+        self.n_neg = n_neg
+
         self.sess = sess
 
     @classmethod
@@ -321,7 +325,7 @@ class PairSampler(object):
 
     def sample_uniform(self, **_):
         """See :func:`tophat.sampling.uniform.sample_uniform`"""
-        return uniform.sample_uniform(self.n_items, self.batch_size)
+        return uniform.sample_uniform(self.n_items, self.batch_size, self.n_neg,)
 
     def sample_uniform_verified(self,
                                 user_inds_batch: Sequence[int],
@@ -329,7 +333,9 @@ class PairSampler(object):
         """See :func:`tophat.sampling.uniform.sample_uniform_verified`"""
         return uniform.sample_uniform_verified(self.n_items,
                                                self.non_neg_xn_csr,
-                                               user_inds_batch)
+                                               user_inds_batch,
+                                               self.n_neg,
+                                               )
 
     def sample_uniform_ordinal(self,
                                user_inds_batch: Sequence[int],
@@ -341,6 +347,7 @@ class PairSampler(object):
             self.non_neg_xn_csr,
             user_inds_batch,
             pos_item_inds_batch,
+            self.n_neg,
         )
 
     def sample_adaptive(self,
@@ -446,7 +453,8 @@ class PairSampler(object):
                 else:
                     neg_item_inds_batch = self.get_negs(
                         user_inds_batch=user_inds_batch,
-                        pos_item_inds_batch=pos_item_inds_batch,)
+                        pos_item_inds_batch=pos_item_inds_batch,
+                    )
                     misc_feed_d = None
 
                 user_feed_d = self.user_feed_via_inds(user_inds_batch)

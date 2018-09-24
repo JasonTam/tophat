@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow.contrib.framework import load_embedding_initializer
 from collections import defaultdict
 from tensorflow.contrib.tensorboard.plugins import projector
-from typing import Iterable, Dict, Tuple, Optional, List, Any, Union
+from typing import Iterable, Dict, Tuple, Optional, List, Any, Union, Callable
 from tempfile import TemporaryDirectory
 
 from tophat.constants import FGroup
@@ -247,6 +247,7 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
                    cols: Iterable[str],
                    scope: str, name_tmp: str = '{}',
                    feature_weights_d: Dict[str, float] = None,
+                   agg_fn: Callable = tf.reduce_mean,
                    ) -> Dict[str, tf.Tensor]:
     """Embedding lookup for each categorical feature
     Can be stacked downstream to yield a tensor
@@ -259,12 +260,18 @@ def lookup_wrapper(emb_d: Dict[str, tf.Tensor],
             emb_d[feat_name], input_xn_d[feat_name],
             name=name_tmp.format(feat_name))
             for feat_name in cols}
+
         if feature_weights_d is not None:
             for feat_name, tensor in looked_up.items():
                 if feat_name in feature_weights_d:
                     looked_up[feat_name] = tf.multiply(
                         tensor, feature_weights_d[feat_name],
                         name=f'{name_tmp.format(feat_name)}_weighted')
+
+        # Aggregate if multiple samples per observation
+        for feat_name, tensor in looked_up.items():
+            if len(tensor.get_shape()) == 3:
+                looked_up[feat_name] = agg_fn(looked_up[feat_name], axis=0)
 
     return looked_up
 
