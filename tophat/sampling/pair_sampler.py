@@ -181,7 +181,6 @@ class PairSampler(object):
         }[self.method]
 
         self.n_epochs = n_epochs if n_epochs >= 0 else sys.maxsize
-        self.batch_size = batch_size
         self.shuffle = shuffle
 
         self.uniform_users = uniform_users
@@ -257,6 +256,8 @@ class PairSampler(object):
             # index for each pos interaction
             self.shuffle_inds = np.arange(len(self.pos_xn_coo.data))
 
+        self.batch_size = min(batch_size, len(self.shuffle_inds))
+
         self.feats_codes_arrs = {
             fg: df.values if hasattr(df, 'values') else None
             for fg, df in feats_codes_dfs.items()
@@ -318,14 +319,12 @@ class PairSampler(object):
         )
 
     def __iter__(self):
-        if self.uniform_users:
-            return self.iter_by_user()
-        else:
-            return self.iter_by_xn()
+        return self.iter_feed_pairs()
 
     def sample_uniform(self, **_):
         """See :func:`tophat.sampling.uniform.sample_uniform`"""
-        return uniform.sample_uniform(self.n_items, self.batch_size, self.n_neg,)
+        return uniform.sample_uniform(self.n_items,
+                                      self.batch_size, self.n_neg,)
 
     def sample_uniform_verified(self,
                                 user_inds_batch: Sequence[int],
@@ -433,28 +432,48 @@ class PairSampler(object):
                              num_key=None,
                              )
 
-    def iter_by_xn(self):
+    def iter_feed_pairs(self):
         # The feed dict generator itself
         # Note: can implement __next__ as well
         #   if we want book-keeping state info to be kept
+
+        if self.uniform_users:
+            pos_xn_csr = self.pos_xn_coo.tocsr()
+
         for i in range(self.n_epochs):
             if self.shuffle:
                 self.rand.shuffle(self.shuffle_inds)
-            # TODO: problem if less inds than batch_size
             inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)
+            # inds are either on interaction or user level
             for inds_batch in inds_batcher:
-                user_inds_batch = self.pos_xn_coo.row[inds_batch]
-                pos_item_inds_batch = self.pos_xn_coo.col[inds_batch]
+
+                if self.uniform_users:
+                    user_inds_batch = inds_batch
+                    pos_l = []
+                    # Pre-generate rands (`random.choice` slow)
+                    rand_rats = self.rand.rand(self.batch_size)
+                    for user_ind, rat in zip(user_inds_batch, rand_rats):
+                        # TODO: `get_row_nz` repeated in sampling
+                        user_pos_item_inds = get_row_nz(pos_xn_csr, user_ind)
+                        user_pos_item = user_pos_item_inds[
+                            int(rat * len(user_pos_item_inds))]
+                        pos_l.append(user_pos_item)
+                    # Select random known pos for user
+                    pos_item_inds_batch = np.array(pos_l)
+
+                else:
+                    user_inds_batch = self.pos_xn_coo.row[inds_batch]
+                    pos_item_inds_batch = self.pos_xn_coo.col[inds_batch]
+
+                neg_samp_results = self.get_negs(
+                    user_inds_batch=user_inds_batch,
+                    pos_item_inds_batch=pos_item_inds_batch,)
+                # Return signature based on method
                 if self.method == 'adaptive_warp':
-                    neg_item_inds_batch, first_violator_inds = self.get_negs(
-                        user_inds_batch=user_inds_batch,
-                        pos_item_inds_batch=pos_item_inds_batch,)
+                    neg_item_inds_batch, first_violator_inds = neg_samp_results
                     misc_feed_d = {'first_violator_inds': first_violator_inds}
                 else:
-                    neg_item_inds_batch = self.get_negs(
-                        user_inds_batch=user_inds_batch,
-                        pos_item_inds_batch=pos_item_inds_batch,
-                    )
+                    neg_item_inds_batch = neg_samp_results
                     misc_feed_d = None
 
                 user_feed_d = self.user_feed_via_inds(user_inds_batch)
@@ -467,56 +486,6 @@ class PairSampler(object):
                     user_feed_d,
                     pos_item_feed_d, neg_item_feed_d,
                     context_feed_d,
-                    misc_feed_d=misc_feed_d,
-                    input_pair_d=self.input_pair_d_usage,
-                )
-                yield feed_pair_dict
-
-    def iter_by_user(self):
-        # The feed dict generator itself
-        # Note: can implement __next__ as well
-        #   if we want book-keeping state info to be kept
-
-        pos_xn_csr = self.pos_xn_coo.tocsr()
-        for i in range(self.n_epochs):
-            if self.shuffle:
-                self.rand.shuffle(self.shuffle_inds)
-            # TODO: problem if less inds than batch_size
-            inds_batcher = batcher(self.shuffle_inds, n=self.batch_size)
-            for inds_batch in inds_batcher:
-                # TODO: WIP>>>
-                user_inds_batch = inds_batch
-                pos_l = []
-
-                for user_ind in user_inds_batch:
-                    user_pos_item_inds = get_row_nz(pos_xn_csr, user_ind)
-                    # `random.choice` slow
-                    user_pos_item = user_pos_item_inds[self.rand.randint(
-                        len(user_pos_item_inds))]
-                    pos_l.append(user_pos_item)
-                # Select random known pos for user
-                # pos_item_inds_batch = self.xn_coo.col[inds_batch]
-                pos_item_inds_batch = np.array(pos_l)
-                if self.method == 'adaptive_warp':
-                    neg_item_inds_batch, first_violator_inds = self.get_negs(
-                        user_inds_batch=user_inds_batch,
-                        pos_item_inds_batch=pos_item_inds_batch,)
-                    misc_feed_d = {'first_violator_inds': first_violator_inds}
-                else:
-                    neg_item_inds_batch = self.get_negs(
-                        user_inds_batch=user_inds_batch,
-                        pos_item_inds_batch=pos_item_inds_batch,)
-                    misc_feed_d = None
-
-                user_feed_d = self.user_feed_via_inds(user_inds_batch)
-                pos_item_feed_d = self.item_feed_via_inds(pos_item_inds_batch)
-                neg_item_feed_d = self.item_feed_via_inds(neg_item_inds_batch)
-
-                # TODO: fix context feed
-                feed_pair_dict = feed_via_pair(
-                    user_feed_d,
-                    pos_item_feed_d, neg_item_feed_d,
-                    context_feed_d={},
                     misc_feed_d=misc_feed_d,
                     input_pair_d=self.input_pair_d_usage,
                 )

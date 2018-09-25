@@ -29,6 +29,7 @@ class FactorizationTaskWrapper(object):
             parent_task_wrapper: Optional['FactorizationTaskWrapper'] = None,
             embedding_map_kwargs: Optional = None,
             batch_size: Optional[int] = None,
+            sample_uniform_users: bool = False,
             sample_prefetch: Optional[int] = 10,
             optimizer: Optional[tf.train.Optimizer] =
             tf.train.AdamOptimizer(learning_rate=0.001),
@@ -55,6 +56,7 @@ class FactorizationTaskWrapper(object):
             embedding_map_kwargs: kwargs for a new initialization of an
                 embedding_map
             batch_size: batch size
+            sample_uniform_users: If `True` sample by user
             sample_prefetch: number of samples to prefetch in the
                 `tf.data.Dataset.prefetch` transformation
             optimizer: graph optimizer to use
@@ -74,6 +76,7 @@ class FactorizationTaskWrapper(object):
         self.sample_prefetch = sample_prefetch
         self.loss_fn = NAMED_LOSSES[loss_fn] if isinstance(loss_fn, str) \
             else loss_fn
+        self.sample_uniform_users = sample_uniform_users
         self.batch_size = batch_size
         self.optimizer = optimizer
 
@@ -152,6 +155,7 @@ class FactorizationTaskWrapper(object):
                 self.data_loader,
                 self.task.input_pair_d,
                 self.batch_size,
+                uniform_users=self.sample_uniform_users,
                 method=self.sample_method,
                 model=self.task,
                 seed=self.seed,
@@ -193,7 +197,10 @@ class FactorizationTaskWrapper(object):
 
     @property
     def steps_per_epoch(self):
-        return len(self) / self.batch_size
+        if self.sampler.uniform_users:
+            return self.data_loader.n_users / self.batch_size
+        else:
+            return len(self) / self.batch_size
 
 
 

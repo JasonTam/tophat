@@ -216,6 +216,7 @@ class InteractionsDerived(object):
                  user_col: Optional[str]=None,
                  item_col: Optional[str]=None,
                  activity_col: Optional[str]=None,
+                 count_col: Optional[str]=None,
                  memoize: bool=True,
                  name: Optional[str] = None,
                  ):
@@ -229,6 +230,7 @@ class InteractionsDerived(object):
         self.user_col = user_col or xn_parent.user_col
         self.item_col = item_col or xn_parent.item_col
         self.activity_col = activity_col or xn_parent.activity_col
+        self.count_col = count_col or xn_parent.count_col
 
     @property
     def data(self):
@@ -339,6 +341,8 @@ class TrainDataLoader(object):
         self.item_cat_cols = self.cat_cols[FGroup.ITEM]
         self.user_feats_d = self.feats_by_group[FGroup.USER]
         self.item_feats_d = self.feats_by_group[FGroup.ITEM]
+        self.n_users = self.interactions_df[self.user_col].nunique()
+        self.n_items = self.interactions_df[self.item_col].nunique()
 
     def export_data_encoding(self):
         return (self.cats_d,

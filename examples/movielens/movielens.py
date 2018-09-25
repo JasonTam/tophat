@@ -86,6 +86,7 @@ primary_task = FactorizationTaskWrapper(
         'embedding_dim': EMB_DIM,
     },
     batch_size=128,
+    sample_uniform_users=False,
     optimizer=opt,
     name='primary',
 )
