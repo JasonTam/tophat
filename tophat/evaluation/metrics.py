@@ -1,8 +1,9 @@
+from typing import Dict
+
 import tensorflow as tf
 from tensorflow.contrib.metrics import (
-    streaming_mean, streaming_sparse_average_precision_at_k)
-
-from typing import Dict
+    streaming_sparse_average_precision_at_k, streaming_sparse_precision_at_k)
+from tensorflow.metrics import mean
 
 
 def make_metrics_ops(fwd_op: tf.Tensor,
@@ -41,6 +42,8 @@ def make_metrics_ops(fwd_op: tf.Tensor,
         # instead of averaging the AUC's over users
         mapk, update_op_mapk = streaming_sparse_average_precision_at_k(
             val_preds, targ_d['y_true_ph'], k=k)
+        prec, update_op_prec = streaming_sparse_precision_at_k(
+            val_preds, targ_d['y_true_ph'], k=k)
         auc, update_op_auc = tf.metrics.auc(
             targ_d['y_true_bool_ph'], tf.sigmoid(val_preds))
         # Tjur's Pseudo R2 inspired bpr
@@ -54,9 +57,9 @@ def make_metrics_ops(fwd_op: tf.Tensor,
                     tf.reduce_sum(nb_t))
         tjurs_bpr_i = tf.subtract(1., tf.sigmoid(pos_mean - neg_mean),
                                   name='tjurs_bpr_val')
-        tjur, update_op_tjur = streaming_mean(tjurs_bpr_i)
-        pm, update_op_pm = streaming_mean(pos_mean)
-        nm, update_op_nm = streaming_mean(neg_mean)
+        tjur, update_op_tjur = mean(tjurs_bpr_i)
+        pm, update_op_pm = mean(pos_mean)
+        nm, update_op_nm = mean(neg_mean)
 
     stream_vars = [i for i in tf.local_variables()
                    if i.name.split('/')[0] == 'stream_metrics']
@@ -64,6 +67,7 @@ def make_metrics_ops(fwd_op: tf.Tensor,
 
     metric_ops_d = {
         'mapk': (mapk, update_op_mapk),
+        'prec': (prec, update_op_prec),
         'auc': (auc, update_op_auc),
         'tjurs': (tjur, update_op_tjur),
         'pm': (pm, update_op_pm),
