@@ -102,7 +102,7 @@ def sample_adaptive(
         #   this will cause the loss weight to be 0 (no update)
         neg_item_inds_batch = neg_item_inds[
             range(len(neg_item_inds)), first_violator_inds
-        ]
+        ].reshape(batch_size, 1)
 
         first_violator_inds[~violations[
             range(batch_size), first_violator_inds]
@@ -114,6 +114,6 @@ def sample_adaptive(
         # Get the worst offender
         neg_item_inds_batch = neg_item_inds[
             range(batch_size), np.argmax(neg_cand_scores, axis=1)
-        ]
+        ].reshape(batch_size, 1)
 
     return neg_item_inds_batch
