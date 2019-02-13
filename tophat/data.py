@@ -602,4 +602,6 @@ def load_many_srcs(features_srcs: Iterable[FeatureSource]):
     # TODO: may consider NOT joining multiple numerical frames upfront
     for feature_type, df_l in src_d.items():
         src_d[feature_type] = pd.concat(df_l, axis=1)
+        src_d[feature_type].index.name = df_l[0].index.name
+
     return src_d
