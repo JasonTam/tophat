@@ -14,6 +14,7 @@ class TophatModel(object):
 
     def __init__(self,
                  tasks: List[FactorizationTaskWrapper],
+                 task_weights: List[float] = None,
                  sess: Optional[tf.Session] = None,
                  ):
 
@@ -24,8 +25,13 @@ class TophatModel(object):
                 task.build()
 
         self.steps_per_epoch = sum((t.steps_per_epoch for t in self.tasks))
-        self.task_samp_weights = [t.steps_per_epoch / self.steps_per_epoch
-                                  for t in self.tasks]
+        self.task_samp_weights = np.array([
+            t.steps_per_epoch / self.steps_per_epoch for t in self.tasks
+        ])
+        task_weights = task_weights or [1] * len(tasks)
+        self.task_samp_weights *= task_weights
+        self.task_samp_weights = (self.task_samp_weights /
+                                  self.task_samp_weights.sum())
 
         self.sess = sess
         self.sess_init()

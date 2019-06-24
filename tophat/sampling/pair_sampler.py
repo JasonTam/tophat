@@ -13,7 +13,7 @@ from typing import Iterable, Sized, Sequence, Optional
 
 from tophat.constants import *
 from tophat.data import TrainDataLoader
-from tophat.sampling import uniform, adaptive, uniform_users
+from tophat.sampling import uniform, adaptive, uniform_users, weighted
 from tophat.utils.sparse_utils import get_row_nz, get_row_nz_data
 from tophat.utils.pseudo_rating import calc_pseudo_ratings
 
@@ -146,6 +146,7 @@ class PairSampler(object):
                  seed: int = 0,
                  non_negs_df: Optional[pd.DataFrame] = None,
                  n_neg: int = 1,
+                 neg_weights: np.array = None,
                  ):
 
         self.rand = np.random.RandomState(seed)
@@ -178,6 +179,7 @@ class PairSampler(object):
             'uniform': self.sample_uniform,
             'uniform_verified': self.sample_uniform_verified,
             'uniform_ordinal': self.sample_uniform_ordinal,
+            'weighted': self.sample_weighted,
             'adaptive': self.sample_adaptive,
             'adaptive_ordinal': self.sample_adaptive_ordinal,
             'adaptive_warp': self.sample_adaptive_warp,
@@ -304,6 +306,16 @@ class PairSampler(object):
 
         self.n_neg = n_neg
 
+        self.neg_weights = neg_weights
+        if isinstance(neg_weights, pd.Series):
+            # series with item_id index
+            self.neg_weights = neg_weights.loc[
+                interactions_df[item_col].cat.categories].values
+        if self.neg_weights is not None:
+            assert self.n_items == len(self.neg_weights)
+            self.neg_weights /= self.neg_weights.sum()
+            self.neg_weights_cs = np.cumsum(self.neg_weights)
+
         self.sess = sess
 
     @classmethod
@@ -320,6 +332,7 @@ class PairSampler(object):
                          use_ds_iter: bool = True,
                          seed: int = 0,
                          non_negs_df: Optional[pd.DataFrame] = None,
+                         neg_weights: np.array = None,
                          ):
         return cls(
             interactions_df=train_data_loader.interactions_df,
@@ -338,6 +351,7 @@ class PairSampler(object):
             use_ds_iter=use_ds_iter,
             seed=seed,
             non_negs_df=non_negs_df,
+            neg_weights=neg_weights,
         )
 
     def __iter__(self):
@@ -350,13 +364,16 @@ class PairSampler(object):
 
     def sample_uniform_verified(self,
                                 user_inds_batch: Sequence[int],
+                                pos_item_inds_batch: Sequence[int],
                                 **_):
         """See :func:`tophat.sampling.uniform.sample_uniform_verified`"""
-        return uniform.sample_uniform_verified(self.n_items,
-                                               self.non_neg_xn_csr,
-                                               user_inds_batch,
-                                               self.n_neg,
-                                               )
+        return uniform.sample_uniform_verified(
+            self.n_items,
+            self.non_neg_xn_csr,
+            user_inds_batch,
+            pos_item_inds_batch,
+            self.n_neg,
+        )
 
     def sample_uniform_ordinal(self,
                                user_inds_batch: Sequence[int],
@@ -371,11 +388,17 @@ class PairSampler(object):
             self.n_neg,
         )
 
+    def sample_weighted(self, weights_cs, **_):
+        """See :func:`tophat.sampling.weighted.sample_weighted`"""
+        return weighted.sample_weighted(
+            weights_cs=weights_cs,
+            batch_size=self.batch_size, n_neg=self.n_neg)
+
     def sample_adaptive(self,
                         user_inds_batch: Sequence[int],
                         pos_item_inds_batch: Sequence[int],
                         use_first_violation: bool = False,
-                        ):
+                        **_):
         """See :func:`tophat.sampling.adaptive.sample_adaptive`"""
         return adaptive.sample_adaptive(self.n_items,
                                         self.max_sampled,
@@ -390,7 +413,7 @@ class PairSampler(object):
                                 user_inds_batch: Sequence[int],
                                 pos_item_inds_batch: Sequence[int],
                                 use_first_violation: bool = False,
-                                ):
+                                **_):
         """See :func:`tophat.sampling.adaptive.sample_adaptive`"""
         return adaptive.sample_adaptive(self.n_items,
                                         self.max_sampled,
@@ -406,7 +429,7 @@ class PairSampler(object):
                              pos_item_inds_batch: Sequence[int],
                              use_first_violation: bool = True,
                              return_n_samp: bool = True,
-                             ):
+                             **_):
         """See :func:`tophat.sampling.adaptive.sample_adaptive`"""
         return adaptive.sample_adaptive(self.n_items,
                                         self.max_sampled,
@@ -462,8 +485,8 @@ class PairSampler(object):
         cs_l = []
         if self.uniform_users:
             pos_xn_csr = self.pos_xn_coo.tocsr()
-            is_weighted = pos_xn_csr.dtype != bool
-            if is_weighted:
+            is_pos_weighted = pos_xn_csr.dtype != bool
+            if is_pos_weighted:
                 # Pre-calculating the cumulative weights
                 # TODO: `cs_l` could also be stored as sparse
                 for user_ind in range(pos_xn_csr.shape[0]):
@@ -471,7 +494,7 @@ class PairSampler(object):
                     cs = np.cumsum(pos_item_data)
                     cs_l.append(cs/cs[-1])
         else:
-            is_weighted = False
+            is_pos_weighted = False
 
         for i in range(self.n_epochs):
             if self.shuffle:
@@ -482,7 +505,7 @@ class PairSampler(object):
 
                 if self.uniform_users:
                     user_inds_batch = inds_batch
-                    if is_weighted:
+                    if is_pos_weighted:
                         pos_sampler = uniform_users.sample_user_pos_weighted
                     else:
                         pos_sampler = uniform_users.sample_user_pos
@@ -495,7 +518,9 @@ class PairSampler(object):
 
                 neg_samp_results = self.get_negs(
                     user_inds_batch=user_inds_batch,
-                    pos_item_inds_batch=pos_item_inds_batch,)
+                    pos_item_inds_batch=pos_item_inds_batch,
+                    weights_cs=self.neg_weights_cs,
+                )
                 # Return signature based on method
                 if self.method == 'adaptive_warp':
                     neg_item_inds_batch, first_violator_inds = neg_samp_results

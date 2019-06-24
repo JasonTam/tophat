@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+import pandas as pd
 from tophat.constants import *
 from tophat.data import (InteractionsSource, InteractionsDerived,
                          FeatureSource,
@@ -25,6 +27,7 @@ class FactorizationTaskWrapper(object):
                 Dict[FGroup, List[FeatureSource]]] = None,
             specific_feature: Optional[Dict[FGroup, bool]] = None,
             nonnegs: Optional[XN_SRC] = None,
+            neg_weights: Optional[Union[np.array, pd.Series]] = None,
             context_cols: Optional[List[str]] = None,
             parent_task_wrapper: Optional['FactorizationTaskWrapper'] = None,
             embedding_map_kwargs: Optional = None,
@@ -51,6 +54,7 @@ class FactorizationTaskWrapper(object):
                 features
             nonnegs: interactions which are blocked from being sampled as
                 negatives
+            neg_weights: sampling weights for negative items
             context_cols: context columns
             parent_task_wrapper: a task wrapper to share categories and
                 embedding maps with
@@ -110,6 +114,7 @@ class FactorizationTaskWrapper(object):
         self.net: BilinearNet = None
         self.task: FactorizationTask = None
         self.nonnegs: Optional[XN_SRC] = nonnegs
+        self.neg_weights = neg_weights
         self.sampler: PairSampler = None
         self.dataset: tf.data.Dataset = None
         self.input_pair_d_via_iter: Iterator = None
@@ -166,6 +171,7 @@ class FactorizationTaskWrapper(object):
                 model=self.task,
                 seed=self.seed,
                 non_negs_df=non_neg_df,
+                neg_weights=self.neg_weights,
             )
         # TODO: manually adding misc first violation (maybe find a cleaner way)
         if self.sample_method == 'adaptive_warp':  # or kos loss

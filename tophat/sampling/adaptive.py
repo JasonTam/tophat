@@ -68,8 +68,8 @@ def sample_adaptive(
         neg_item_inds = np.empty([batch_size, max_sampled], dtype=int)
         pos_item_vals = xn_csr[user_inds_batch, pos_item_inds_batch]
 
-        for i, (user_ind, cur_pos_item_val) in enumerate(
-                zip(user_inds_batch, pos_item_vals.A1)):
+        for i, (user_ind, cur_pos_item_val, cur_pos_item_ind) in enumerate(
+                zip(user_inds_batch, pos_item_vals.A1, pos_item_inds_batch)):
             # Get all positive interactions for this user
             user_pos_item_inds, user_pos_item_vals = get_row_nz_data(
                 xn_csr, user_ind)
@@ -77,8 +77,12 @@ def sample_adaptive(
             # Filter interactions of same or higher tier than current positive
             user_pos_item_inds = user_pos_item_inds[
                 user_pos_item_vals >= cur_pos_item_val]
-            user_neg_item_inds = neg_samp_bsearch(
-                user_pos_item_inds, n_items, max_sampled)
+            if len(user_pos_item_inds) < n_items:
+                user_neg_item_inds = neg_samp_bsearch(
+                    user_pos_item_inds, n_items, max_sampled)
+            else:
+                # HACK: No negs available, pairing the positive with itself
+                user_neg_item_inds = [cur_pos_item_ind] * max_sampled
 
             neg_item_inds[i, :] = user_neg_item_inds
 
