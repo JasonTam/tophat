@@ -13,8 +13,8 @@ from typing import Iterable, Sized, Sequence, Optional
 
 from tophat.constants import *
 from tophat.data import TrainDataLoader
-from tophat.sampling import uniform, adaptive
-from tophat.utils.sparse_utils import get_row_nz
+from tophat.sampling import uniform, adaptive, uniform_users
+from tophat.utils.sparse_utils import get_row_nz, get_row_nz_data
 from tophat.utils.pseudo_rating import calc_pseudo_ratings
 
 
@@ -109,6 +109,8 @@ class PairSampler(object):
             rather than by positive interaction
             (optimize all users equally rather than weighing more active users)
         method: Negative sampling method
+        weighted_pos_sampling: If `True`, use pseudoratings to weight the
+            sampling of positive items
         model: Optional model for adaptive sampling
         use_ds_iter: If `True`, use tf.data.Dataset iterator API, else
             use generator of placeholder dictionaries for feed_dict API
@@ -138,6 +140,7 @@ class PairSampler(object):
                  uniform_users: bool = False,
                  method: str = 'uniform',
                  model=None,
+                 weighted_pos_sampling: bool = False,
                  sess: tf.Session = None,
                  use_ds_iter: bool = True,
                  seed: int = 0,
@@ -195,11 +198,28 @@ class PairSampler(object):
         self.n_users = len(interactions_df[user_col].cat.categories)
         self.n_items = len(interactions_df[item_col].cat.categories)
 
-        self.pos_xn_coo = sp.coo_matrix(
-            (np.ones(len(interactions_df), dtype=bool),
-             (interactions_df[user_col].cat.codes,
-              interactions_df[item_col].cat.codes)),
-            shape=(self.n_users, self.n_items), dtype=bool)
+        if weighted_pos_sampling:
+            interactions_df = calc_pseudo_ratings(
+                interactions_df=interactions_df,
+                user_col=user_col,
+                item_col=item_col,
+                counts_col=count_col,
+                weight_switch_col=activity_col,
+                sublinear=True,
+                reagg_counts=False,
+                output_col='pseudo_rating',
+            )
+            self.pos_xn_coo = sp.coo_matrix(
+                (interactions_df['pseudo_rating'],
+                 (interactions_df[user_col].cat.codes,
+                  interactions_df[item_col].cat.codes)),
+                shape=(self.n_users, self.n_items), dtype=np.float32)
+        else:
+            self.pos_xn_coo = sp.coo_matrix(
+                (np.ones(len(interactions_df), dtype=bool),
+                 (interactions_df[user_col].cat.codes,
+                  interactions_df[item_col].cat.codes)),
+                shape=(self.n_users, self.n_items), dtype=bool)
 
         if non_negs_df is not None:
             # Additional non-negs passed in
@@ -294,6 +314,7 @@ class PairSampler(object):
                          shuffle: bool = True,
                          n_epochs: int = -1,
                          uniform_users: bool = False,
+                         weighted_pos_sampling: bool = False,
                          method: str = 'uniform',
                          model=None,
                          use_ds_iter: bool = True,
@@ -311,6 +332,7 @@ class PairSampler(object):
             shuffle=shuffle,
             n_epochs=n_epochs,
             uniform_users=uniform_users,
+            weighted_pos_sampling=weighted_pos_sampling,
             method=method,
             model=model,
             use_ds_iter=use_ds_iter,
@@ -437,8 +459,19 @@ class PairSampler(object):
         # Note: can implement __next__ as well
         #   if we want book-keeping state info to be kept
 
+        cs_l = []
         if self.uniform_users:
             pos_xn_csr = self.pos_xn_coo.tocsr()
+            is_weighted = pos_xn_csr.dtype != bool
+            if is_weighted:
+                # Pre-calculating the cumulative weights
+                # TODO: `cs_l` could also be stored as sparse
+                for user_ind in range(pos_xn_csr.shape[0]):
+                    _, pos_item_data = get_row_nz_data(pos_xn_csr, user_ind)
+                    cs = np.cumsum(pos_item_data)
+                    cs_l.append(cs/cs[-1])
+        else:
+            is_weighted = False
 
         for i in range(self.n_epochs):
             if self.shuffle:
@@ -449,18 +482,13 @@ class PairSampler(object):
 
                 if self.uniform_users:
                     user_inds_batch = inds_batch
-                    pos_l = []
-                    # Pre-generate rands (`random.choice` slow)
-                    rand_rats = self.rand.rand(self.batch_size)
-                    for user_ind, rat in zip(user_inds_batch, rand_rats):
-                        # TODO: `get_row_nz` repeated in sampling
-                        user_pos_item_inds = get_row_nz(pos_xn_csr, user_ind)
-                        user_pos_item = user_pos_item_inds[
-                            int(rat * len(user_pos_item_inds))]
-                        pos_l.append(user_pos_item)
-                    # Select random known pos for user
-                    pos_item_inds_batch = np.array(pos_l)
+                    if is_weighted:
+                        pos_sampler = uniform_users.sample_user_pos_weighted
+                    else:
+                        pos_sampler = uniform_users.sample_user_pos
 
+                    pos_item_inds_batch = pos_sampler(
+                        user_inds_batch, pos_xn_csr, self.rand, cs_l)
                 else:
                     user_inds_batch = self.pos_xn_coo.row[inds_batch]
                     pos_item_inds_batch = self.pos_xn_coo.col[inds_batch]

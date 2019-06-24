@@ -4,11 +4,13 @@ from typing import Dict
 from pandas.api.types import CategoricalDtype
 
 pseudo_rating_weights = {
-    b'purch': 0.8119,
-    b'cart':  0.1500,
-    b'list':  0.0444,
-    b'click': 0.0312,
-    b'visit': 0.0135,
+    'purch': 0.8119,
+    'fav': 0.9, #0.1,
+    'cart':  0.1500,
+    'list':  0.0444,
+    'click': 0.0312,
+    'visit': 0.0135,
+    'view': 0.0135,
 }
 
 

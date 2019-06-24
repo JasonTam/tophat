@@ -30,6 +30,7 @@ class FactorizationTaskWrapper(object):
             embedding_map_kwargs: Optional = None,
             batch_size: Optional[int] = None,
             sample_uniform_users: bool = False,
+            weighted_pos_sampling: bool = False,
             sample_prefetch: Optional[int] = 10,
             optimizer: Optional[tf.train.Optimizer] =
             tf.train.AdamOptimizer(learning_rate=0.001),
@@ -57,6 +58,9 @@ class FactorizationTaskWrapper(object):
                 embedding_map
             batch_size: batch size
             sample_uniform_users: If `True` sample by user
+            weighted_pos_sampling: If `True` use pseudoratings for sampling
+                positive items
+                (valid when `sample_uniform_users` is `True`)
             sample_prefetch: number of samples to prefetch in the
                 `tf.data.Dataset.prefetch` transformation
             optimizer: graph optimizer to use
@@ -77,6 +81,7 @@ class FactorizationTaskWrapper(object):
         self.loss_fn = NAMED_LOSSES[loss_fn] if isinstance(loss_fn, str) \
             else loss_fn
         self.sample_uniform_users = sample_uniform_users
+        self.weighted_pos_sampling = weighted_pos_sampling
         self.batch_size = batch_size
         self.optimizer = optimizer
 
@@ -156,6 +161,7 @@ class FactorizationTaskWrapper(object):
                 self.task.input_pair_d,
                 self.batch_size,
                 uniform_users=self.sample_uniform_users,
+                weighted_pos_sampling=self.weighted_pos_sampling,
                 method=self.sample_method,
                 model=self.task,
                 seed=self.seed,
