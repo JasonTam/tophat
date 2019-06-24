@@ -5,6 +5,7 @@
  Tophat is a factorization-based recommendation engine built using 
  [TensorFlow](https://www.tensorflow.org/).  
  
+ Consider this a dev fork of https://github.com/saksdirect/tophat . Except this is not actually a fork anymore.
 
 ## Installation
 
