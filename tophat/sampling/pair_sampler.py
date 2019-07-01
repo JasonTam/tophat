@@ -315,6 +315,8 @@ class PairSampler(object):
             assert self.n_items == len(self.neg_weights)
             self.neg_weights /= self.neg_weights.sum()
             self.neg_weights_cs = np.cumsum(self.neg_weights)
+        else:
+            self.neg_weights_cs = None
 
         self.sess = sess
 
