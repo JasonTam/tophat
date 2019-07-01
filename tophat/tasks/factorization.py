@@ -11,6 +11,7 @@ class FactorizationTask(BaseTask):
     Args:
         net: Prediction network
         batch_size: Batch size for fitting
+        loss_fn: callable loss function tensor
         optimizer: Training optimizer object
         seed: Seed for random state
         item_col: name of item column -- used to get the number of items

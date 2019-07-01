@@ -32,6 +32,7 @@ class FactorizationTaskWrapper(object):
             parent_task_wrapper: Optional['FactorizationTaskWrapper'] = None,
             embedding_map_kwargs: Optional = None,
             batch_size: Optional[int] = None,
+            task_weight: Optional[float] = 1.,
             sample_uniform_users: bool = False,
             weighted_pos_sampling: bool = False,
             sample_prefetch: Optional[int] = 10,
@@ -61,6 +62,7 @@ class FactorizationTaskWrapper(object):
             embedding_map_kwargs: kwargs for a new initialization of an
                 embedding_map
             batch_size: batch size
+            task_weight: multiplicative weight to apply to the task's loss
             sample_uniform_users: If `True` sample by user
             weighted_pos_sampling: If `True` use pseudoratings for sampling
                 positive items
@@ -87,6 +89,7 @@ class FactorizationTaskWrapper(object):
         self.sample_uniform_users = sample_uniform_users
         self.weighted_pos_sampling = weighted_pos_sampling
         self.batch_size = batch_size
+        self.task_weight = task_weight
         self.optimizer = optimizer
 
         self.parent_task_wrapper = parent_task_wrapper
@@ -200,7 +203,7 @@ class FactorizationTaskWrapper(object):
 
         # Get our training operations
         self.loss = self.task.get_loss()
-        self.train_op = self.task.training(self.loss)
+        self.train_op = self.task.training(self.loss * self.task_weight)
 
         self.built = True
 
