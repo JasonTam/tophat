@@ -273,7 +273,9 @@ class PairSampler(object):
 
         if self.uniform_users:
             # index for each user
-            self.shuffle_inds = np.arange(self.n_users)
+            # self.shuffle_inds = np.arange(self.n_users)
+            # index for each user WITH a positive interaction
+            self.shuffle_inds = np.unique(self.pos_xn_coo.row)
         else:
             # index for each pos interaction
             self.shuffle_inds = np.arange(len(self.pos_xn_coo.data))
@@ -494,7 +496,11 @@ class PairSampler(object):
                 for user_ind in range(pos_xn_csr.shape[0]):
                     _, pos_item_data = get_row_nz_data(pos_xn_csr, user_ind)
                     cs = np.cumsum(pos_item_data)
-                    cs_l.append(cs/cs[-1])
+
+                    if len(cs):
+                        cs_l.append(cs/cs[-1])
+                    else:
+                        cs_l.append(None)
         else:
             is_pos_weighted = False
 
