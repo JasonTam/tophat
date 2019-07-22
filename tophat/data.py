@@ -511,6 +511,7 @@ def load_simple(
 def simplifying_assumption(interactions_df,
                            user_feats_d, item_feats_d,
                            user_col, item_col,
+                           prune_features: bool = False,
                            ):
     """OUTOFPLACE:
     filtering to make sure we only have known interaction users/items
@@ -531,13 +532,14 @@ def simplifying_assumption(interactions_df,
             item_feats_d[FType.NUM].index)
         interactions_df = interactions_df.loc[in_item_feats]
 
-    # And some more filtering
-    # Get rid of rows in feature df that don't show up in interactions
-    # (so we dont have a gazillion things in our vocab)
-    user_feats_d[FType.CAT] = user_feats_d[FType.CAT]\
-        .loc[interactions_df[user_col].unique()]
-    item_feats_d[FType.CAT] = item_feats_d[FType.CAT]\
-        .loc[interactions_df[item_col].unique()]
+    if prune_features:
+        # And some more filtering
+        # Get rid of rows in feature df that don't show up in interactions
+        # (so we dont have a gazillion things in our vocab)
+        user_feats_d[FType.CAT] = user_feats_d[FType.CAT]\
+            .loc[interactions_df[user_col].unique()]
+        item_feats_d[FType.CAT] = item_feats_d[FType.CAT]\
+            .loc[interactions_df[item_col].unique()]
 
     return interactions_df, user_feats_d, item_feats_d,
 
