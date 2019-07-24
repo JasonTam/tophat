@@ -424,7 +424,7 @@ def load_simple(
         interactions_src: InteractionsSource,
         features_srcs: FeatureSourceDictType,
         specific_feature: Dict[FGroup, bool],
-        existing_cats_d: Optional[Dict[str, List[Any]]]=None,
+        existing_cats_d: Optional[Dict[str, List[Any]]] = None,
         add_new_cats: Optional[bool] = False,
 ) -> Tuple[pd.DataFrame, Dict[FGroup, Dict[FType, pd.DataFrame]]]:
     """Stand-in loader mostly for local testing
@@ -474,6 +474,7 @@ def load_simple(
         interactions_df,
         feats_by_group[FGroup.USER], feats_by_group[FGroup.ITEM],
         cols[FGroup.USER], cols[FGroup.ITEM],
+        prune_features=True, existing_cats_d=existing_cats_d,
     )
 
     for fgroup in [FGroup.USER, FGroup.ITEM]:
@@ -508,11 +509,13 @@ def load_simple(
     return interactions_df, feats_by_group
 
 
-def simplifying_assumption(interactions_df,
-                           user_feats_d, item_feats_d,
-                           user_col, item_col,
-                           prune_features: bool = False,
-                           ):
+def simplifying_assumption(
+        interactions_df,
+        user_feats_d, item_feats_d,
+        user_col, item_col,
+        prune_features: bool = True,
+        existing_cats_d: Optional[Dict[str, List[Any]]] = None,
+        ):
     """OUTOFPLACE:
     filtering to make sure we only have known interaction users/items
     """
@@ -536,10 +539,19 @@ def simplifying_assumption(interactions_df,
         # And some more filtering
         # Get rid of rows in feature df that don't show up in interactions
         # (so we dont have a gazillion things in our vocab)
-        user_feats_d[FType.CAT] = user_feats_d[FType.CAT]\
-            .loc[interactions_df[user_col].unique()]
-        item_feats_d[FType.CAT] = item_feats_d[FType.CAT]\
-            .loc[interactions_df[item_col].unique()]
+        if existing_cats_d and user_col in existing_cats_d:
+            user_filt = list(set(existing_cats_d[user_col])
+                                 .union(interactions_df[user_col].unique()))
+        else:
+            user_filt = interactions_df[user_col].unique()
+        if existing_cats_d and item_col in existing_cats_d:
+            item_filt = list(set(existing_cats_d[item_col])
+                             .union(interactions_df[item_col].unique()))
+        else:
+            item_filt = interactions_df[item_col].unique()
+
+        user_feats_d[FType.CAT] = user_feats_d[FType.CAT].loc[user_filt]
+        item_feats_d[FType.CAT] = item_feats_d[FType.CAT].loc[item_filt]
 
     return interactions_df, user_feats_d, item_feats_d,
 
