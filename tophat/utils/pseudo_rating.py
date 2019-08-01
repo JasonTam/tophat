@@ -45,7 +45,7 @@ def calc_pseudo_ratings(interactions_df: pd.DataFrame,
     if reagg_counts:
         # Assure that counts are already aggregated
         df = interactions_df\
-            .groupby([user_col, item_col, weight_switch_col])\
+            .groupby([user_col, item_col, weight_switch_col], observed=True)\
             .sum().reset_index()
     else:
         df = interactions_df
@@ -54,7 +54,7 @@ def calc_pseudo_ratings(interactions_df: pd.DataFrame,
         df[weight_switch_col].map(weights_d).astype(np.float32) *
         df[counts_col].map(scaling_fn).astype(np.float32)
     )
-    g = df.groupby([user_col, item_col])
+    g = df.groupby([user_col, item_col], observed=True)
     out_df = g[output_col].sum().reset_index()
 
     # Re-apply categories
