@@ -83,7 +83,7 @@ class Validator(object):
         # If an item occurs in training less than `n_xns_as_cold` times,
         # it is considered a cold item; otherwise, warm
         train_item_counts = train_data_loader.interactions_df\
-            .groupby(train_data_loader.item_col).size()
+            .groupby(train_data_loader.item_col, observed=True).size()
         warm_items = set(
             train_item_counts.loc[train_item_counts >= n_xns_as_cold].index)
 
