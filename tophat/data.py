@@ -24,6 +24,8 @@ class FeatureSource(object):
         drop_cols: list of columns to drop
         load_fn: function to load features from path
         load_kwargs: kwargs for `load_fn`
+        force_str: if `True`, cast everything to strings
+            (to avoid collision of dtypes when expanding vocab)
         name: Name of the data source
     """
 
@@ -37,6 +39,7 @@ class FeatureSource(object):
                  load_fn: Optional[Callable[
                      [Union[str, pd.DataFrame]], pd.DataFrame]] = None,
                  load_kwargs: Optional[Dict] = None,
+                 force_str: Optional[bool] = True,
                  name=None,
                  ):
 
@@ -49,6 +52,7 @@ class FeatureSource(object):
         self.use_cols = use_cols
         self.concat_cols = concat_cols
         self.drop_cols = drop_cols
+        self.force_str = force_str
 
         self.data = None
 
@@ -90,6 +94,10 @@ class FeatureSource(object):
 
             if self.drop_cols:
                 self.data.drop(list(set(self.drop_cols)), axis=1, inplace=True)
+
+            if self.force_str:
+                self.data = self.data.astype(str)
+                self.data.index = self.data.index.astype(str)
 
         return self
 
@@ -133,6 +141,8 @@ class InteractionsSource(object):
         activity_filter_set: Subset of interaction types to consider
         load_fn: function to load interactions from path
         load_kwargs: kwargs for `load_fn`
+        force_str: if `True`, cast everything to strings
+            (to avoid collision of dtypes when expanding vocab)
         name: name for this object
     """
 
@@ -146,6 +156,7 @@ class InteractionsSource(object):
                  load_fn: Optional[Callable[
                      [Union[str, pd.DataFrame]], pd.DataFrame]] = None,
                  load_kwargs: Optional[Dict] = None,
+                 force_str: Optional[bool] = True,
                  name: Optional[str] = None,
                  ):
         self.name = name or ''
@@ -157,6 +168,7 @@ class InteractionsSource(object):
         self.count_col = count_col
         self.activity_col = activity_col
         self.activity_filter_set = activity_filter_set
+        self.force_str = force_str
 
         self.data = None
 
@@ -187,6 +199,10 @@ class InteractionsSource(object):
                     self.activity_col, self.activity_filter_set)
             if hasattr(interactions_df, 'compute'):
                 interactions_df = interactions_df.compute()
+            if self.force_str:
+                for col in [self.user_col, self.item_col]:
+                    interactions_df[col] = interactions_df[col].astype(str)
+
             self.data = interactions_df
         return self
 
@@ -437,6 +453,7 @@ def load_simple(
         specific_feature: If `True`, includes a primary id as a feature for
             that group (user, item)
         existing_cats_d: Optional dictionary of existing categories
+        add_new_cats: whether to add new categories
 
     Returns:
         Tuple of preprocessed interactions, user features, and item_features
@@ -541,7 +558,7 @@ def simplifying_assumption(
         # (so we dont have a gazillion things in our vocab)
         if existing_cats_d and user_col in existing_cats_d:
             user_filt = list(set(existing_cats_d[user_col])
-                                 .union(interactions_df[user_col].unique()))
+                             .union(interactions_df[user_col].unique()))
         else:
             user_filt = interactions_df[user_col].unique()
         if existing_cats_d and item_col in existing_cats_d:
