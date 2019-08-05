@@ -277,6 +277,7 @@ class TrainDataLoader(object):
     def __init__(self,
                  interactions_train: InteractionsSource,
                  group_features: Optional[FeatureSourceDictType] = None,
+                 resolution: Optional[str] = None,
                  specific_feature: Optional[Dict[FGroup, bool]] = None,
                  context_cols: Optional[Iterable[str]] = None,
                  batch_size: int=128,
@@ -315,6 +316,7 @@ class TrainDataLoader(object):
                 specific_feature,
                 existing_cats_d=self.cats_d,
                 add_new_cats=add_new_cats,
+                resolution=resolution,
             )
 
         for fgroup in [FGroup.USER, FGroup.ITEM]:
@@ -442,6 +444,7 @@ def load_simple(
         specific_feature: Dict[FGroup, bool],
         existing_cats_d: Optional[Dict[str, List[Any]]] = None,
         add_new_cats: Optional[bool] = False,
+        resolution: Optional[str] = None,
 ) -> Tuple[pd.DataFrame, Dict[FGroup, Dict[FType, pd.DataFrame]]]:
     """Stand-in loader mostly for local testing
 
@@ -454,6 +457,8 @@ def load_simple(
             that group (user, item)
         existing_cats_d: Optional dictionary of existing categories
         add_new_cats: whether to add new categories
+        resolution: re-agg to this resolution if provided
+                (will effect one of the group features)
 
     Returns:
         Tuple of preprocessed interactions, user features, and item_features
@@ -480,6 +485,14 @@ def load_simple(
                 index=interactions_df[col].drop_duplicates())
             specific_feature[fgroup] = True
 
+        if (resolution in feats[FType.CAT]
+                and feats[FType.CAT].index.name != resolution):
+            # Re-aggregate feature table to resolution override
+            feats[FType.CAT] = (feats[FType.CAT]
+                                .groupby(resolution, observed=True)
+                                .first()
+                                )
+
         # TODO: Extreme simplifying assumption (should be handled better):
         #     This gets rid of missing side features
         feats[FType.CAT].dropna(axis=0, inplace=True)
@@ -487,6 +500,7 @@ def load_simple(
         feats_by_group[fgroup] = feats
 
     # TODO: Another simplifying assumption:
+    # (Note: feats_by_group modified in-place)
     interactions_df, user_feats_d, item_feats_d, = simplifying_assumption(
         interactions_df,
         feats_by_group[FGroup.USER], feats_by_group[FGroup.ITEM],

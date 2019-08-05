@@ -25,6 +25,7 @@ class FactorizationTaskWrapper(object):
             interactions: XN_SRC,
             group_features: Optional[
                 Dict[FGroup, List[FeatureSource]]] = None,
+            resolution: Optional[str] = None,
             specific_feature: Optional[Dict[FGroup, bool]] = None,
             nonnegs: Optional[XN_SRC] = None,
             neg_weights: Optional[Union[np.array, pd.Series]] = None,
@@ -51,6 +52,8 @@ class FactorizationTaskWrapper(object):
             sample_method: negative sampling method
             interactions: source of user*item interactions
             group_features: dictionary of user and item features
+            resolution: re-agg to this resolution if provided
+                (will effect one of the group features)
             specific_feature: dictionary of flags to use user/item specific
                 features
             nonnegs: interactions which are blocked from being sampled as
@@ -104,6 +107,7 @@ class FactorizationTaskWrapper(object):
         self.data_loader = TrainDataLoader(
             interactions_train=interactions,
             group_features=group_features,
+            resolution=resolution,
             specific_feature=specific_feature,
             context_cols=context_cols,
             batch_size=batch_size,
